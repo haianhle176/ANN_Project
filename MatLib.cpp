@@ -138,47 +138,140 @@ void Mat::savetxt(const string& filename) const {
     outfile.close();
     cout << "Da luu ma tran vao file text: " << filename << endl;
 }
-Mat& Mat::loadmat(const string& txtFilename) {
-    string binFilename = txtFilename.substr(0, txtFilename.find_last_of('.')) + ".bin";
-    ifstream binCheck(binFilename, ios::in | ios::binary);
-    if (binCheck.is_open()) {
-        binCheck.close();
-        ifstream infile(binFilename, ios::in | ios::binary);
-        int file_row, file_col;
-        infile.read(reinterpret_cast<char*>(&file_row), sizeof(int));
-        infile.read(reinterpret_cast<char*>(&file_col), sizeof(int));
-        if (this->row != file_row || this->col != file_col) {
-            *this = Mat(file_row, file_col);
-        }
-        infile.read(reinterpret_cast<char*>(this->data.data()), this->data.size() * sizeof(float));
-        infile.close();
-        cout << "Loaded from binary: " << binFilename << endl;
-    } else {
-        ifstream infile(txtFilename);
-        if (!infile.is_open()) {
-            cerr << "Error: Could not open file " << txtFilename << endl;
-            return *this;
-        }
-        int row, col;
-        infile >> row >> col;
-        *this = Mat(row, col);
-        for (int i = 0; i < row; i++)
-            for (int j = 0; j < col; j++)
-                infile >> (*this)(i, j);
-        infile.close();
-        cout << "Loaded from text: " << txtFilename << endl;
-        ofstream outfile(binFilename, ios::out | ios::binary);
-        if (!outfile.is_open()) {
-            cerr << "Error: Could not create binary file: " << binFilename << endl;
-            return *this;
-        }
-        outfile.write(reinterpret_cast<const char*>(&this->row), sizeof(int));
-        outfile.write(reinterpret_cast<const char*>(&this->col), sizeof(int));
-        outfile.write(reinterpret_cast<const char*>(this->data.data()), this->data.size() * sizeof(float));
-        outfile.close();
-        cout << "Saved to binary: " << binFilename << endl;
+Mat& Mat::loadmat(const string& txtFilename, int start, int end) {
+    ifstream infile(txtFilename);
+    if (!infile.is_open()) {
+        cerr << "Error: Could not open file " << txtFilename << endl;
+        return *this;
     }
-
+ 
+    // 1. Đếm file_col từ dòng đầu tiên, file_row bằng cách đếm tổng số dòng
+    int file_row = 0, file_col = 0;
+    {
+        string line;
+        // Đọc dòng đầu để đếm cột
+        if (getline(infile, line)) {
+            file_row = 1;
+            istringstream iss(line);
+            float v;
+            while (iss >> v) file_col++;
+        }
+        // Đếm các dòng còn lại
+        while (getline(infile, line)) {
+            if (!line.empty()) file_row++;
+        }
+    }
+ 
+    if (file_col == 0 || file_row == 0) {
+        cerr << "Error: File is empty or malformed: " << txtFilename << endl;
+        infile.close();
+        return *this;
+    }
+ 
+    int target_row = file_row;
+    int target_col = file_col;
+    int start_idx = 1;
+ 
+    // 2. Xử lý nếu start và end khác 0
+    if (start != 0 || end != 0) {
+        target_row = end - start + 1;
+        start_idx = start;
+    }
+ 
+    // 3. Kiểm tra bounds
+    if (start_idx < 1 || start_idx + target_row - 1 > file_row) {
+        cerr << "Error: start/end out of bounds! (file has " << file_row
+             << " rows, requested rows " << start_idx
+             << " to " << (start_idx + target_row - 1) << ")" << endl;
+        infile.close();
+        return *this;
+    }
+ 
+    // 4. Khởi tạo ma trận và quay về đầu file
+    *this = Mat(target_row, target_col);
+    infile.clear();
+    infile.seekg(0);
+ 
+    // 5. Bỏ qua (start_idx - 1) hàng đầu
+    float dummy_val;
+    int elements_to_skip = (start_idx - 1) * target_col;
+    for (int i = 0; i < elements_to_skip; i++) infile >> dummy_val;
+ 
+    // 6. Đọc dữ liệu
+    for (int i = 0; i < target_row; i++)
+        for (int j = 0; j < target_col; j++)
+            infile >> (*this)(i, j);
+ 
+    infile.close();
+    cout << "Loaded " << target_row << "x" << target_col << " from: " << txtFilename << endl;
+    return *this;
+}
+Mat& Mat::copyfrom(const Mat& src, string direction, int start, int end) {
+    if (direction == "row") {
+        if (start < 0 || end > src.row || start > end) {
+            cerr << "Error: Invalid row range for copying." << endl;
+            return *this;
+        }
+        int num_rows = end - start;
+        for (int i = 0; i < num_rows; i++) {
+            // Đã đổi src.col thành this->col ở điểm đến
+            std::copy(src.data.begin() + (start + i) * src.col, 
+                      src.data.begin() + (start + i) * src.col + src.col, 
+                      this->data.begin() + i * this->col);
+        }
+    } else if (direction == "col") {
+        if (start < 0 || end > src.col || start > end) {
+            cerr << "Error: Invalid column range for copying." << endl;
+            return *this;
+        }
+        int num_cols = end - start;
+        for (int i = 0; i < src.row; i++) {
+            for (int j = 0; j < num_cols; j++) {
+                (*this)(i, j) = src(i, start + j);
+            }
+        }
+    } else {
+        cerr << "Error: Direction must be 'row' or 'col'." << endl;
+    }
+    return *this;
+}
+Mat& Mat::copyexcept(const Mat& src, string direction, int start_except, int end_except) {
+    if (direction == "row") {
+        if (start_except < 0 || end_except > src.row || start_except > end_except) {
+            cerr << "Error: Invalid row range for copying." << endl;
+            return *this;
+        }
+        int num_rows = src.row - (end_except - start_except);
+        int dst_row = 0;
+        for (int i = 0; i < src.row; i++) {
+            // SỬA LỖI: Đổi > thành >=
+            if (i < start_except || i >= end_except) {
+                // Đã đổi src.col thành this->col ở điểm đến
+                std::copy(src.data.begin() + i * src.col, 
+                          src.data.begin() + i * src.col + src.col, 
+                          this->data.begin() + dst_row * this->col);
+                dst_row++;
+            }
+        }
+    } else if (direction == "col") {
+        if (start_except < 0 || end_except > src.col || start_except > end_except) {
+            cerr << "Error: Invalid column range for copying." << endl;
+            return *this;
+        }
+        int num_cols = src.col - (end_except - start_except);
+        for (int i = 0; i < src.row; i++) {
+            int dst_col = 0;
+            for (int j = 0; j < src.col; j++) {
+                // Khối lệnh này của bạn ban đầu đã đúng
+                if (j < start_except || j >= end_except) {
+                    (*this)(i, dst_col) = src(i, j);
+                    dst_col++;
+                }
+            }
+        }
+    } else {
+        cerr << "Error: Direction must be 'row' or 'col'." << endl;
+    }
     return *this;
 }
 Mat& Mat::operator=(const Mat& other){
@@ -245,12 +338,13 @@ Mat operator*(const Mat& A, const Mat& B){
 }
 void Loss_History::save(const float loss) {Loss.push_back(loss);}
 void Loss_History::print(){
+    if (Loss.size()==0) return;
 	for (int i = 0;i<Loss.size();i++){
 		cout << "\nLoss " << i <<": " << Loss[i];
 	}
 	cout<<"\nLoss final: "<<Loss[Loss.size() - 1] << " end at "<<Loss.size() <<" epoch\n";
 }
-void Loss_History::print_final(){cout<<"\nLoss final: "<<Loss[Loss.size() - 1] << " end at "<<Loss.size() <<" epoch\n";}
+void Loss_History::print_final(){if (Loss.size()==0) return; cout<<"\nLoss final: "<<Loss[Loss.size() - 1] << " end at "<<Loss.size() <<" epoch\n";}
 void Init_Node(vector<Mat>& W, vector<Mat>& B, vector <int> hidden_nodes, int input_dim, int output_dim){
     for (int i = 0; i < W.size(); i++) {
         if (i == 0) {
@@ -1013,6 +1107,66 @@ void ModelEvaluation(const Mat& Y_true, const Mat& Y_pred, string loss_type, flo
         cout << "Mean Absolute Error: " << mae << endl;
     }
 }
+float ModelEvaluation(const Mat& Y_true, const Mat& Y_pred, string loss_type, string eval_type, float threshold){
+    if (loss_type == "BCE" || loss_type == "CCE"){
+        float precision , recall , f1;
+        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
+        Mat Y_hat (Y_pred.row,Y_pred.col);
+        Mat ConfusionMat(Y_pred.col, Y_pred.col);
+        if (loss_type == "BCE") apply(Y_pred, Y_hat, [threshold](float x) {return (x > threshold) ? 1.0f : 0.0f;});
+        else {
+            for (int i = 0; i < Y_hat.row; i++) {
+		        int pred_class = 0;
+                for (int j = 1; j < Y_hat.col; j++) if (Y_pred(i, j) > Y_pred(i, pred_class)) pred_class = j;
+                Y_hat(i,pred_class) = 1.0f; 
+            }
+            for (int i = 0;i < Y_true.row;i++){
+                int idx_ytrue = -1, idx_yhat = -1;
+                for (int j = 0;j < Y_true.col; j++){
+                    if (Y_true(i,j)) idx_ytrue = j;
+                    if (Y_hat(i,j)) idx_yhat = j;
+                    if (idx_yhat != -1 && idx_ytrue != -1) break;
+                }
+                ConfusionMat(idx_ytrue , idx_yhat)++;
+            }
+            int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
+            Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
+            Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
+            for (int i = 0; i < ConfusionMat.row; i++){
+                int tp = (int)ConfusionMat(i,i);
+                int fp = sor.data[i] - tp;
+                int fn = soc.data[i] - tp;
+                int tn = total_sum - tp - fp - fn;
+                precision = Precision(tp, fp); macro_precision += precision;
+                recall = Recall(tp, fn); macro_recall += recall;
+                f1 = F1_Score(precision, recall); macro_f1 += f1;
+            }
+            if (eval_type == "precision" ) {
+                cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl; 
+                return (float)macro_precision / ConfusionMat.row;
+            }
+            else if (eval_type == "recall" ) {
+                cout << "\nMacro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
+                return (float)macro_recall / ConfusionMat.row;
+            }
+            else if (eval_type == "f1_score") {
+                cout << "\nMacro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
+                return (float)macro_f1 / ConfusionMat.row;
+            }
+            else return -1e3f;
+        }
+    }
+    else if (loss_type == "RMSE") {
+        float rmse = sqrtf(2* MSE(Y_true, Y_pred));
+        cout << "\nRoot Mean Squared Error: " << rmse << endl;
+        return rmse;
+    }
+    else if (loss_type == "MAE") {
+        float mae = MAE(Y_true, Y_pred);
+        cout << "Mean Absolute Error: " << mae << endl;
+        return mae;
+    }
+}
 void RandNormal(vector<float>& src, float mu, float sigma){
     static std::mt19937 gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
     static std::normal_distribution<float> dis(mu, sigma);
@@ -1035,10 +1189,10 @@ float RandUni(float a, float b){
     uniform_real_distribution<float> dis(a, b);
     return dis(gen);
 }
-void StartTimer(){start = high_resolution_clock::now();}
-void StopTimer(){stop = high_resolution_clock::now();} 
+void StartTimer(){start_timer = high_resolution_clock::now();}
+void StopTimer(){stop_timer = high_resolution_clock::now();} 
 void PrintTimer() {
-    auto duration = duration_cast<milliseconds>(stop - start);
+    auto duration = duration_cast<milliseconds>(stop_timer - start_timer);
     cout << "\nThoi gian thuc thi: " << duration.count() << " ms" << endl;
 }
 void ShowSoftmaxPredict(const Mat& Y_Pred, const Mat& Y_Test){
@@ -1089,7 +1243,7 @@ int EarlyStop(const Mat& X_Val, const Mat& Y_Val, vector <Mat>& W,vector <Mat>& 
     else {
         wait_count++;
         if (wait_count >= patience){
-            cout << "\n[Early Stopping]";
+            cout << "\n[Early Stopping] at epoch " << epoch <<endl;
             for(size_t i = 0; i < W.size(); i++) {
                 W[i] = Best_W[i];
                 B[i] = Best_B[i];
@@ -1231,8 +1385,7 @@ void Train_LG_BIN(const Mat& X, const Mat& Y, Mat& W, Mat& B, float learning_rat
             UpdateParameters(dB, B, B, alpha);
     }
 }
-void Train_MLP(const Mat& X, const Mat& Y, vector<Mat>& W, vector<Mat>& B, vector <int> hidden_nodes, float learning_rate, int epochs, Loss_History& history,
-     string loss_type, string regularization, float lambda){
+void Train_MLP(const Mat& X, const Mat& Y, vector<Mat>& W, vector<Mat>& B, vector <int> hidden_nodes, float learning_rate, int epochs, Loss_History& history, string loss_type, string regularization, float lambda){
     // Init dW, dB truoc de W duoc cap nhat dung kich thuoc
     vector <Mat> dW(W.size());
     vector <Mat> dB(B.size());
@@ -1293,8 +1446,7 @@ void Train_MLP(const Mat& X, const Mat& Y, vector<Mat>& W, vector<Mat>& B, vecto
         }
     }
 }
-void Train_MLP(const Mat& X, const Mat& Y, vector<Mat>& W, vector<Mat>& B, vector <int> hidden_nodes, float learning_rate, int epochs, Loss_History& history,
-     string loss_type, float pkeep, int batch_size){
+void Train_MLP(const Mat& X, const Mat& Y, vector<Mat>& W, vector<Mat>& B, vector <int> hidden_nodes, float learning_rate, int epochs, Loss_History& history, string loss_type, float pkeep, int batch_size){
     // Init dW, dB truoc de W duoc cap nhat dung kich thuoc
     int X_mini_size = X.row/batch_size;
     vector <Mat> X_mini (X_mini_size);
@@ -1326,26 +1478,26 @@ void Train_MLP(const Mat& X, const Mat& Y, vector<Mat>& W, vector<Mat>& B, vecto
             for (int b = 0 ; b < X_mini_size ;b++){
                 for(size_t i = 0; i < W.size() - 1; i++)RandBer(Mask[i].data, pkeep);
                 Forward_Pass_ReLU(X_mini[b], W, B, Z, A, Mask, loss_type);
-                history.save(MSE(Y_mini[b], A.back()));
                 Backward_Pass_ReLU(X_mini[b], Y_mini[b], W, Z, A, dA, dW, dB, Mask, loss_type);
                 for (size_t i = 0; i < W.size(); i++) {
                     UpdateParameters(dW[i], W[i], W[i], alpha, parameter_scaling);
                     UpdateParameters(dB[i], B[i], B[i], alpha);
                 }
             }
+            history.save(MSE(Y_mini[X_mini_size - 1], A.back()));
         }
     } else if (loss_type == "MAE") {
         for (int epoch = 0; epoch < epochs; epoch++) {
             for (int b = 0 ; b < X_mini_size ;b++){
                 for(size_t i = 0; i < W.size() - 1; i++)RandBer(Mask[i].data, pkeep);
                 Forward_Pass_ReLU(X_mini[b], W, B, Z, A, Mask, loss_type);
-                history.save(MAE(Y_mini[b], A.back()));
                 Backward_Pass_ReLU(X_mini[b], Y_mini[b], W, Z, A, dA, dW, dB, Mask, loss_type);
                 for (size_t i = 0; i < W.size(); i++) {
                     UpdateParameters(dW[i], W[i], W[i], alpha, parameter_scaling);
                     UpdateParameters(dB[i], B[i], B[i], alpha);
                 }
             }
+            history.save(MAE(Y_mini[X_mini_size - 1], A.back()));
         }
     }
     else if (loss_type == "BCE") {
@@ -1353,13 +1505,13 @@ void Train_MLP(const Mat& X, const Mat& Y, vector<Mat>& W, vector<Mat>& B, vecto
             for (int b = 0 ; b < X_mini_size ;b++){
                 for(size_t i = 0; i < W.size() - 1; i++)RandBer(Mask[i].data, pkeep);
                 Forward_Pass_ReLU(X_mini[b], W, B, Z, A, Mask, loss_type);
-                history.save(BCE(Y_mini[b], A.back()));
                 Backward_Pass_ReLU(X_mini[b], Y_mini[b], W, Z, A, dA, dW, dB, Mask, loss_type);
                 for (size_t i = 0; i < W.size(); i++) {
                     UpdateParameters(dW[i], W[i], W[i], alpha, parameter_scaling);
                     UpdateParameters(dB[i], B[i], B[i], alpha);
                 }
             }
+            history.save(BCE(Y_mini[X_mini_size - 1], A.back()));
         }
     }
     else if (loss_type == "CCE") {
@@ -1367,13 +1519,13 @@ void Train_MLP(const Mat& X, const Mat& Y, vector<Mat>& W, vector<Mat>& B, vecto
             for (int b = 0 ; b < X_mini_size ;b++){
                 for(size_t i = 0; i < W.size() - 1; i++)RandBer(Mask[i].data, pkeep);
                 Forward_Pass_ReLU(X_mini[b], W, B, Z, A, Mask, loss_type);
-                history.save(CCE(Y_mini[b], A.back()));
                 Backward_Pass_ReLU(X_mini[b], Y_mini[b], W, Z, A, dA, dW, dB, Mask, loss_type);
                 for (size_t i = 0; i < W.size(); i++) {
                     UpdateParameters(dW[i], W[i], W[i], alpha, parameter_scaling);
                     UpdateParameters(dB[i], B[i], B[i], alpha);
                 }
             }
+            history.save(CCE(Y_mini[X_mini_size - 1], A.back()));
         }
     }
 }
@@ -1517,7 +1669,7 @@ void MLP(Mat& X, Mat& Y, vector<Mat>& W, vector<Mat>& B,vector <int> hidden_node
     Train_MLP(X, Y, W, B, hidden_nodes, learning_rate, epochs, history, loss_type, pkeep, batch_size);
     Rescale_Weight(W[0], B[0], X_mean_mat, X_std_mat);
 }
-void MLP(Mat& X, Mat& Y, Mat& X_Val, Mat& Y_Val, vector<Mat>& W, vector<Mat>& B, vector <int> hidden_nodes, float learning_rate,
+void MLP(Mat& X, Mat& Y, Mat& X_Val, Mat& Y_Val, vector<Mat>& W, vector<Mat>& B, vector <int> hidden_nodes, float learning_rate, 
      int epochs, Loss_History& history, string loss_type , float pkeep, int batch_size){
     Init_Node(W, B, hidden_nodes, X.col, Y.col);
     for (size_t i = 0; i < W.size(); i++) {
@@ -1529,4 +1681,42 @@ void MLP(Mat& X, Mat& Y, Mat& X_Val, Mat& Y_Val, vector<Mat>& W, vector<Mat>& B,
     FeatureScaling(X_Val, X_mean_mat, X_std_mat);
     Train_MLP(X, Y, X_Val, Y_Val, W, B, hidden_nodes, learning_rate, epochs, history, loss_type, pkeep, batch_size);
     Rescale_Weight(W[0], B[0], X_mean_mat, X_std_mat);        
+}
+void K_Fold_MLP(const Mat& X, const Mat& Y, int K, bool shuffle, vector <int> hidden_nodes, float learning_rate, int epoch, string loss_type , float pkeep, int batch_size){
+    int fold_size = X.row / K;
+    Mat X_Val(fold_size, X.col), Y_Val(fold_size, Y.col);
+    Mat X_Val_Raw = X_Val;
+    Mat X_Train(X.row - fold_size, X.col), Y_Train(Y.row - fold_size, Y.col);
+    Mat Y_Mean_mat(1, Y.col), Y_Std_mat(1, Y.col);
+    vector<Mat> W(hidden_nodes.size() + 1), B(hidden_nodes.size() + 1);
+    Loss_History history;
+    float avr_point = 0.0f;
+    for (int k =0; k < K; k++){
+        int start_idx;
+        if (shuffle) {
+            start_idx = rand() % X.row;
+            if (start_idx + fold_size > X.row) start_idx = X.row - fold_size;
+        } else {
+            start_idx = k * fold_size;
+        }
+        X_Val.copyfrom(X, "row", start_idx, start_idx + fold_size);
+        Y_Val.copyfrom(Y, "row", start_idx, start_idx + fold_size);
+        X_Train.copyexcept(X,"row", start_idx, start_idx + fold_size);
+        Y_Train.copyexcept(Y,"row", start_idx, start_idx + fold_size);
+        if (loss_type == "MAE" || loss_type == "MSE") {
+            FeatureScaling(Y_Train, Y_Train, Y_Mean_mat, Y_Std_mat);
+            FeatureScaling(Y_Val, Y_Mean_mat, Y_Std_mat);
+        }
+        X_Val_Raw = X_Val;
+        MLP(X_Train, Y_Train, X_Val, Y_Val, W, B, hidden_nodes, learning_rate, epoch, history, loss_type, pkeep, batch_size);
+        Mat Y_Pred(Y_Val.row, Y_Val.col);
+        Forward_Pass_ReLU(X_Val_Raw, W, B, Y_Pred, loss_type);
+        if (loss_type == "MAE" || loss_type == "MSE") {
+            Rescale_Y(Y_Pred, Y_Mean_mat, Y_Std_mat);
+            Rescale_Y(Y_Val, Y_Mean_mat, Y_Std_mat);
+        }
+        cout << "\nFold " << k + 1 << endl;
+        avr_point += ModelEvaluation(Y_Val, Y_Pred, loss_type, "f1_score");
+    }
+    cout << "\nAverage result: " << avr_point / K << endl;
 }
