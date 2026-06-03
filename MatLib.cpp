@@ -1061,112 +1061,7 @@ void ShowVIF(const Mat& X){
         cout << "Feature " << i << ": " << VIF_mat(0, i) << endl;
     }
 }
-void ModelEvaluation(const Mat& Y_true, const Mat& Y_pred, string loss_type, float threshold){
-    if (loss_type == "BCE" || loss_type == "CCE"){
-        float precision , recall , f1;
-        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
-        Mat Y_hat (Y_pred.row,Y_pred.col);
-        Mat ConfusionMat(Y_pred.col, Y_pred.col);
-        if (loss_type == "BCE") apply(Y_pred, Y_hat, [threshold](float x) {return (x > threshold) ? 1.0f : 0.0f;});
-        else {
-            for (int i = 0; i < Y_hat.row; i++) {
-		        int pred_class = 0;
-                for (int j = 1; j < Y_hat.col; j++) if (Y_pred(i, j) > Y_pred(i, pred_class)) pred_class = j;
-                Y_hat(i,pred_class) = 1.0f; 
-            }
-            for (int i = 0;i < Y_true.row;i++){
-                int idx_ytrue = -1, idx_yhat = -1;
-                for (int j = 0;j < Y_true.col; j++){
-                    if (Y_true(i,j)) idx_ytrue = j;
-                    if (Y_hat(i,j)) idx_yhat = j;
-                    if (idx_yhat != -1 && idx_ytrue != -1) break;
-                }
-                ConfusionMat(idx_ytrue , idx_yhat)++;
-            }
-            int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
-            Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
-            Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
-            for (int i = 0; i < ConfusionMat.row; i++){
-                int tp = (int)ConfusionMat(i,i);
-                int fp = sor.data[i] - tp;
-                int fn = soc.data[i] - tp;
-                int tn = total_sum - tp - fp - fn;
-                precision = Precision(tp, fp); macro_precision += precision;
-                recall = Recall(tp, fn); macro_recall += recall;
-                f1 = F1_Score(precision, recall); macro_f1 += f1;
-            }
-            cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl;
-            cout << "Macro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
-            cout << "Macro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
-        }
-    }
-    else if (loss_type == "MSE" || loss_type == "MAE"){
-        float mse = MSE(Y_true, Y_pred);
-        float mae = MAE(Y_true, Y_pred);
-        cout << "\nRoot Mean Squared Error: " << sqrtf(2* mse) << endl;
-        cout << "Mean Absolute Error: " << mae << endl;
-    }
-}
-float ModelEvaluation(const Mat& Y_true, const Mat& Y_pred, string loss_type, string eval_type, float threshold){
-    if (loss_type == "BCE" || loss_type == "CCE"){
-        float precision , recall , f1;
-        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
-        Mat Y_hat (Y_pred.row,Y_pred.col);
-        Mat ConfusionMat(Y_pred.col, Y_pred.col);
-        if (loss_type == "BCE") apply(Y_pred, Y_hat, [threshold](float x) {return (x > threshold) ? 1.0f : 0.0f;});
-        else {
-            for (int i = 0; i < Y_hat.row; i++) {
-		        int pred_class = 0;
-                for (int j = 1; j < Y_hat.col; j++) if (Y_pred(i, j) > Y_pred(i, pred_class)) pred_class = j;
-                Y_hat(i,pred_class) = 1.0f; 
-            }
-            for (int i = 0;i < Y_true.row;i++){
-                int idx_ytrue = -1, idx_yhat = -1;
-                for (int j = 0;j < Y_true.col; j++){
-                    if (Y_true(i,j)) idx_ytrue = j;
-                    if (Y_hat(i,j)) idx_yhat = j;
-                    if (idx_yhat != -1 && idx_ytrue != -1) break;
-                }
-                ConfusionMat(idx_ytrue , idx_yhat)++;
-            }
-            int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
-            Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
-            Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
-            for (int i = 0; i < ConfusionMat.row; i++){
-                int tp = (int)ConfusionMat(i,i);
-                int fp = sor.data[i] - tp;
-                int fn = soc.data[i] - tp;
-                int tn = total_sum - tp - fp - fn;
-                precision = Precision(tp, fp); macro_precision += precision;
-                recall = Recall(tp, fn); macro_recall += recall;
-                f1 = F1_Score(precision, recall); macro_f1 += f1;
-            }
-            if (eval_type == "precision" ) {
-                cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl; 
-                return (float)macro_precision / ConfusionMat.row;
-            }
-            else if (eval_type == "recall" ) {
-                cout << "\nMacro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
-                return (float)macro_recall / ConfusionMat.row;
-            }
-            else if (eval_type == "f1_score") {
-                cout << "\nMacro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
-                return (float)macro_f1 / ConfusionMat.row;
-            }
-            else return -1e3f;
-        }
-    }
-    else if (loss_type == "RMSE") {
-        float rmse = sqrtf(2* MSE(Y_true, Y_pred));
-        cout << "\nRoot Mean Squared Error: " << rmse << endl;
-        return rmse;
-    }
-    else if (loss_type == "MAE") {
-        float mae = MAE(Y_true, Y_pred);
-        cout << "Mean Absolute Error: " << mae << endl;
-        return mae;
-    }
-}
+
 void RandNormal(vector<float>& src, float mu, float sigma){
     static std::mt19937 gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
     static std::normal_distribution<float> dis(mu, sigma);
@@ -1629,69 +1524,14 @@ void Train_MLP(const Mat& X, const Mat& Y, const Mat& X_Val, const Mat& Y_Val, v
         }
     }
 }
-void LinearRegression(Mat& X, Mat& Y, Mat& W, Mat& B, float learning_rate, int epochs, Loss_History& history, string loss_type,
-     string regularization, float lambda) {
-    W.rand(); B.rand();
-    Mat mean_mat(1, X.col), std_mat(1, X.col);
-    FeatureScaling(X, X, mean_mat, std_mat, "standard");
-    Train_LN(X, Y, W, B, learning_rate, epochs, history, loss_type, regularization, lambda);
-	Rescale_Weight(W, B, mean_mat, std_mat);
-}
-void LogisticRegression_Binary(Mat& X, Mat& Y, Mat& W, Mat& B, float learning_rate, int epochs, Loss_History& history,
-     string regularization, float lambda) {
-    W.rand(); B.rand();
-    Mat mean_mat(1, X.col), std_mat(1, X.col);
-    FeatureScaling(X, X, mean_mat, std_mat, "standard");
-    Train_LG_BIN(X, Y, W, B, learning_rate, epochs, history, regularization, lambda);
-    Rescale_Weight(W, B, mean_mat, std_mat);
-}
-void MLP(Mat& X, Mat& Y, vector<Mat>& W, vector<Mat>& B,vector <int> hidden_nodes,float learning_rate, int epochs, Loss_History& history,
-     string loss_type, string regularization, float lambda){
-    Init_Node(W, B, hidden_nodes, X.col, Y.col);
-    for (size_t i = 0; i < W.size(); i++) {
-        RandNormal(W[i].data, 0.0f, sqrtf(2.0f / W[i].row));
-        B[i].set_zeros();
-    }
-    Mat X_mean_mat(1, X.col), X_std_mat(1, X.col);
-    FeatureScaling(X, X, X_mean_mat, X_std_mat, "standard");
-    Train_MLP(X, Y, W, B, hidden_nodes, learning_rate, epochs, history, loss_type, regularization, lambda);
-    Rescale_Weight(W[0], B[0], X_mean_mat, X_std_mat);
-}
-void MLP(Mat& X, Mat& Y, vector<Mat>& W, vector<Mat>& B,vector <int> hidden_nodes,float learning_rate, int epochs, Loss_History& history,
-     string loss_type, float pkeep, int batch_size){
-    Init_Node(W, B, hidden_nodes, X.col, Y.col);
-    for (size_t i = 0; i < W.size(); i++) {
-        RandNormal(W[i].data, 0.0f, sqrtf(2.0f / W[i].row));
-        B[i].set_zeros();
-    }
-    Mat X_mean_mat(1, X.col), X_std_mat(1, X.col);
-    FeatureScaling(X, X, X_mean_mat, X_std_mat, "standard");
-    Train_MLP(X, Y, W, B, hidden_nodes, learning_rate, epochs, history, loss_type, pkeep, batch_size);
-    Rescale_Weight(W[0], B[0], X_mean_mat, X_std_mat);
-}
-void MLP(Mat& X, Mat& Y, Mat& X_Val, Mat& Y_Val, vector<Mat>& W, vector<Mat>& B, vector <int> hidden_nodes, float learning_rate, 
-     int epochs, Loss_History& history, string loss_type , float pkeep, int batch_size){
-    Init_Node(W, B, hidden_nodes, X.col, Y.col);
-    for (size_t i = 0; i < W.size(); i++) {
-        RandNormal(W[i].data, 0.0f, sqrtf(2.0f / W[i].row));
-        B[i].set_zeros();
-    }
-    Mat X_mean_mat(1, X.col), X_std_mat(1, X.col);
-    FeatureScaling(X, X, X_mean_mat, X_std_mat, "standard");
-    FeatureScaling(X_Val, X_mean_mat, X_std_mat);
-    Train_MLP(X, Y, X_Val, Y_Val, W, B, hidden_nodes, learning_rate, epochs, history, loss_type, pkeep, batch_size);
-    Rescale_Weight(W[0], B[0], X_mean_mat, X_std_mat);        
-}
-void K_Fold_MLP(const Mat& X, const Mat& Y, int K, bool shuffle, vector <int> hidden_nodes, float learning_rate, int epoch, string loss_type , float pkeep, int batch_size){
+
+void MLP::k_fold(const Mat& X, const Mat& Y, int K, bool shuffle, float learning_rate, int epochs) {
     int fold_size = X.row / K;
     Mat X_Val(fold_size, X.col), Y_Val(fold_size, Y.col);
-    Mat X_Val_Raw = X_Val;
     Mat X_Train(X.row - fold_size, X.col), Y_Train(Y.row - fold_size, Y.col);
-    Mat Y_Mean_mat(1, Y.col), Y_Std_mat(1, Y.col);
-    vector<Mat> W(hidden_nodes.size() + 1), B(hidden_nodes.size() + 1);
     Loss_History history;
     float avr_point = 0.0f;
-    for (int k =0; k < K; k++){
+    for (int k = 0; k < K; k++) {
         int start_idx;
         if (shuffle) {
             start_idx = rand() % X.row;
@@ -1701,22 +1541,592 @@ void K_Fold_MLP(const Mat& X, const Mat& Y, int K, bool shuffle, vector <int> hi
         }
         X_Val.copyfrom(X, "row", start_idx, start_idx + fold_size);
         Y_Val.copyfrom(Y, "row", start_idx, start_idx + fold_size);
-        X_Train.copyexcept(X,"row", start_idx, start_idx + fold_size);
-        Y_Train.copyexcept(Y,"row", start_idx, start_idx + fold_size);
-        if (loss_type == "MAE" || loss_type == "MSE") {
-            FeatureScaling(Y_Train, Y_Train, Y_Mean_mat, Y_Std_mat);
-            FeatureScaling(Y_Val, Y_Mean_mat, Y_Std_mat);
-        }
-        X_Val_Raw = X_Val;
-        MLP(X_Train, Y_Train, X_Val, Y_Val, W, B, hidden_nodes, learning_rate, epoch, history, loss_type, pkeep, batch_size);
-        Mat Y_Pred(Y_Val.row, Y_Val.col);
-        Forward_Pass_ReLU(X_Val_Raw, W, B, Y_Pred, loss_type);
-        if (loss_type == "MAE" || loss_type == "MSE") {
-            Rescale_Y(Y_Pred, Y_Mean_mat, Y_Std_mat);
-            Rescale_Y(Y_Val, Y_Mean_mat, Y_Std_mat);
-        }
+        X_Train.copyexcept(X, "row", start_idx, start_idx + fold_size);
+        Y_Train.copyexcept(Y, "row", start_idx, start_idx + fold_size);
+        this->fit_with_valid(X_Train, Y_Train, X_Val, Y_Val, learning_rate, epochs, history);
+        Mat Y_Pred = this->predict(X_Val);
         cout << "\nFold " << k + 1 << endl;
-        avr_point += ModelEvaluation(Y_Val, Y_Pred, loss_type, "f1_score");
+        avr_point += this->evaluate(Y_Val, Y_Pred, "f1_score");
     }
     cout << "\nAverage result: " << avr_point / K << endl;
+}
+
+MLP::MLP(const vector<int>& hidden_nodes, const string& loss_type, const string& regularization,
+         float lambda, float pkeep, int batch_size)
+    : hidden_nodes(hidden_nodes), loss_type(loss_type), regularization(regularization),
+      lambda(lambda), pkeep(pkeep), batch_size(batch_size), X_mean(1, 0), X_std(1, 0),
+      Y_mean(1, 0), Y_std(1, 0) {
+    int layer_count = static_cast<int>(hidden_nodes.size()) + 1;
+    W.resize(layer_count);
+    B.resize(layer_count);
+}
+
+void MLP::initialize_weights(int input_dim, int output_dim) {
+    int layer_count = static_cast<int>(hidden_nodes.size()) + 1;
+    W.assign(layer_count, Mat());
+    B.assign(layer_count, Mat());
+    Init_Node(W, B, hidden_nodes, input_dim, output_dim);
+    for (size_t i = 0; i < W.size(); i++) {
+        RandNormal(W[i].data, 0.0f, sqrtf(2.0f / W[i].row));
+        B[i].set_zeros();
+    }
+}
+
+void MLP::scale_training_data(const Mat& X, const Mat& Y, Mat& X_scaled, Mat& Y_scaled) {
+    X_scaled = X;
+    X_mean = Mat(1, X.col);
+    X_std = Mat(1, X.col);
+    FeatureScaling(X, X_scaled, X_mean, X_std, "standard");
+
+    Y_scaled = Y;
+    if (loss_type == "MSE" || loss_type == "MAE") {
+        Y_mean = Mat(1, Y.col);
+        Y_std = Mat(1, Y.col);
+        FeatureScaling(Y, Y_scaled, Y_mean, Y_std);
+    } else {
+        Y_mean = Mat(1, Y.col);
+        Y_std = Mat(1, Y.col);
+    }
+}
+
+void MLP::scale_validation_data(const Mat& X_val, const Mat& Y_val, Mat& X_val_scaled,
+                                 Mat& Y_val_scaled) {
+    X_val_scaled = X_val;
+    if (X_mean.row == 1 && X_mean.col == X_val.col) {
+        FeatureScaling(X_val, X_val_scaled, X_mean, X_std);
+    }
+
+    Y_val_scaled = Y_val;
+    if ((loss_type == "MSE" || loss_type == "MAE") && Y_mean.row == 1 && Y_mean.col == Y_val.col) {
+        FeatureScaling(Y_val, Y_val_scaled, Y_mean, Y_std);
+    }
+}
+
+void MLP::fit(const Mat& X, const Mat& Y, float learning_rate, int epochs, Loss_History& history) {
+    initialize_weights(X.col, Y.col);
+    Mat X_scaled, Y_scaled;
+    scale_training_data(X, Y, X_scaled, Y_scaled);
+
+    int effective_batch = batch_size > 0 ? batch_size : X.row;
+    if (batch_size > 0 || pkeep < 1.0f) {
+        Train_MLP(X_scaled, Y_scaled, W, B, hidden_nodes, learning_rate, epochs, history,
+                  loss_type, pkeep, effective_batch);
+    } else {
+        Train_MLP(X_scaled, Y_scaled, W, B, hidden_nodes, learning_rate, epochs, history,
+                  loss_type, regularization, lambda);
+    }
+}
+
+void MLP::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val,
+                         float learning_rate, int epochs, Loss_History& history) {
+    initialize_weights(X.col, Y.col);
+    Mat X_scaled, Y_scaled;
+    scale_training_data(X, Y, X_scaled, Y_scaled);
+
+    Mat X_val_scaled, Y_val_scaled;
+    scale_validation_data(X_val, Y_val, X_val_scaled, Y_val_scaled);
+
+    int effective_batch = batch_size > 0 ? batch_size : X.row;
+    Train_MLP(X_scaled, Y_scaled, X_val_scaled, Y_val_scaled, W, B, hidden_nodes,
+              learning_rate, epochs, history, loss_type, pkeep, effective_batch);
+}
+
+void MLP::predict(const Mat& X, Mat& Y_pred) const {
+    Mat X_scaled = X;
+    if (X_mean.row == 1 && X_mean.col == X.col) {
+        FeatureScaling(X, X_scaled, const_cast<Mat&>(X_mean), const_cast<Mat&>(X_std));
+    }
+    MLP_Test(X_scaled, W, B, Y_pred, loss_type, const_cast<Mat&>(Y_mean), const_cast<Mat&>(Y_std));
+}
+
+Mat MLP::predict(const Mat& X) const {
+    int output_dim = W.empty() ? 0 : W.back().col;
+    Mat Y_pred(X.row, output_dim);
+    predict(X, Y_pred);
+    return Y_pred;
+}
+
+void MLP::evaluate(const Mat& Y_true, const Mat& Y_pred, float threshold) const {
+    if (loss_type == "BCE" || loss_type == "CCE"){
+        float precision , recall , f1;
+        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
+        Mat Y_hat (Y_pred.row,Y_pred.col);
+        Mat ConfusionMat(Y_pred.col, Y_pred.col);
+        if (loss_type == "BCE") apply(Y_pred, Y_hat, [threshold](float x) {return (x > threshold) ? 1.0f : 0.0f;});
+        else {
+            for (int i = 0; i < Y_hat.row; i++) {
+		        int pred_class = 0;
+                for (int j = 1; j < Y_hat.col; j++) if (Y_pred(i, j) > Y_pred(i, pred_class)) pred_class = j;
+                Y_hat(i,pred_class) = 1.0f; 
+            }
+            for (int i = 0;i < Y_true.row;i++){
+                int idx_ytrue = -1, idx_yhat = -1;
+                for (int j = 0;j < Y_true.col; j++){
+                    if (Y_true(i,j)) idx_ytrue = j;
+                    if (Y_hat(i,j)) idx_yhat = j;
+                    if (idx_yhat != -1 && idx_ytrue != -1) break;
+                }
+                ConfusionMat(idx_ytrue , idx_yhat)++;
+            }
+            int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
+            Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
+            Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
+            for (int i = 0; i < ConfusionMat.row; i++){
+                int tp = (int)ConfusionMat(i,i);
+                int fp = sor.data[i] - tp;
+                int fn = soc.data[i] - tp;
+                int tn = total_sum - tp - fp - fn;
+                precision = Precision(tp, fp); macro_precision += precision;
+                recall = Recall(tp, fn); macro_recall += recall;
+                f1 = F1_Score(precision, recall); macro_f1 += f1;
+            }
+            cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl;
+            cout << "Macro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
+            cout << "Macro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
+        }
+    }
+    else if (loss_type == "MSE" || loss_type == "MAE"){
+        float mse = MSE(Y_true, Y_pred);
+        float mae = MAE(Y_true, Y_pred);
+        cout << "\nRoot Mean Squared Error: " << sqrtf(2* mse) << endl;
+        cout << "Mean Absolute Error: " << mae << endl;
+    }
+}
+
+float MLP::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type, float threshold) const {
+    if (loss_type == "BCE" || loss_type == "CCE"){
+        float precision , recall , f1;
+        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
+        Mat Y_hat (Y_pred.row,Y_pred.col);
+        Mat ConfusionMat(Y_pred.col, Y_pred.col);
+        if (loss_type == "BCE") apply(Y_pred, Y_hat, [threshold](float x) {return (x > threshold) ? 1.0f : 0.0f;});
+        else {
+            for (int i = 0; i < Y_hat.row; i++) {
+		        int pred_class = 0;
+                for (int j = 1; j < Y_hat.col; j++) if (Y_pred(i, j) > Y_pred(i, pred_class)) pred_class = j;
+                Y_hat(i,pred_class) = 1.0f; 
+            }
+            for (int i = 0;i < Y_true.row;i++){
+                int idx_ytrue = -1, idx_yhat = -1;
+                for (int j = 0;j < Y_true.col; j++){
+                    if (Y_true(i,j)) idx_ytrue = j;
+                    if (Y_hat(i,j)) idx_yhat = j;
+                    if (idx_yhat != -1 && idx_ytrue != -1) break;
+                }
+                ConfusionMat(idx_ytrue , idx_yhat)++;
+            }
+            int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
+            Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
+            Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
+            for (int i = 0; i < ConfusionMat.row; i++){
+                int tp = (int)ConfusionMat(i,i);
+                int fp = sor.data[i] - tp;
+                int fn = soc.data[i] - tp;
+                int tn = total_sum - tp - fp - fn;
+                precision = Precision(tp, fp); macro_precision += precision;
+                recall = Recall(tp, fn); macro_recall += recall;
+                f1 = F1_Score(precision, recall); macro_f1 += f1;
+            }
+            if (eval_type == "precision" ) {
+                cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl; 
+                return (float)macro_precision / ConfusionMat.row;
+            }
+            else if (eval_type == "recall" ) {
+                cout << "\nMacro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
+                return (float)macro_recall / ConfusionMat.row;
+            }
+            else if (eval_type == "f1_score") {
+                cout << "\nMacro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
+                return (float)macro_f1 / ConfusionMat.row;
+            }
+            else return -1e3f;
+        }
+    }
+    else if (loss_type == "RMSE") {
+        float rmse = sqrtf(2* MSE(Y_true, Y_pred));
+        cout << "\nRoot Mean Squared Error: " << rmse << endl;
+        return rmse;
+    }
+    else if (loss_type == "MAE") {
+        float mae = MAE(Y_true, Y_pred);
+        cout << "Mean Absolute Error: " << mae << endl;
+        return mae;
+    }
+    return 0.0f;
+}
+
+LinearRegression::LinearRegression(const string& loss_type, const string& regularization,
+                                   float lambda, int batch_size)
+    : loss_type(loss_type), regularization(regularization), lambda(lambda), batch_size(batch_size),
+      X_mean(1, 0), X_std(1, 0), Y_mean(1, 0), Y_std(1, 0) {}
+
+void LinearRegression::fit(const Mat& X, const Mat& Y, float learning_rate, int epochs, Loss_History& history) {
+    W = Mat(X.col, Y.col);
+    B = Mat(1, Y.col);
+    W.rand();
+    B.rand();
+
+    Mat X_scaled = X;
+    FeatureScaling(X, X_scaled, X_mean, X_std, "standard");
+
+    Mat Y_scaled = Y;
+    bool scale_y = (loss_type == "MSE" || loss_type == "MAE");
+    if (scale_y) {
+        FeatureScaling(Y, Y_scaled, Y_mean, Y_std);
+    }
+
+    if (batch_size > 0 && batch_size < X.row) {
+        int n_batches = (X.row + batch_size - 1) / batch_size;
+        vector<Mat> X_mini(n_batches);
+        vector<Mat> Y_mini(n_batches);
+        for (int b = 0; b < n_batches; ++b) {
+            int start = b * batch_size;
+            int end = min(X.row, start + batch_size);
+            int current_rows = end - start;
+            X_mini[b] = Mat(current_rows, X.col);
+            Y_mini[b] = Mat(current_rows, Y.col);
+            for (int i = 0; i < current_rows; ++i) {
+                Copy_Vec(X_scaled.data.data() + (start + i) * X.col, X_mini[b].data.data() + i * X.col, X.col);
+                Copy_Vec(Y_scaled.data.data() + (start + i) * Y.col, Y_mini[b].data.data() + i * Y.col, Y.col);
+            }
+        }
+        for (int epoch = 0; epoch < epochs; ++epoch) {
+            for (int b = 0; b < n_batches; ++b) {
+                Train_LN(X_mini[b], Y_mini[b], W, B, learning_rate, 1, history, loss_type, regularization, lambda);
+            }
+        }
+    } else {
+        Train_LN(X_scaled, Y_scaled, W, B, learning_rate, epochs, history, loss_type, regularization, lambda);
+    }
+}
+
+void LinearRegression::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val,
+                                      float learning_rate, int epochs, Loss_History& history) {
+    W = Mat(X.col, Y.col);
+    B = Mat(1, Y.col);
+    W.rand();
+    B.rand();
+
+    Mat X_scaled = X;
+    FeatureScaling(X, X_scaled, X_mean, X_std, "standard");
+
+    Mat Y_scaled = Y;
+    bool scale_y = (loss_type == "MSE" || loss_type == "MAE");
+    if (scale_y) {
+        FeatureScaling(Y, Y_scaled, Y_mean, Y_std);
+    }
+
+    Mat X_val_scaled = X_val;
+    if (X_mean.row == 1 && X_mean.col == X_val.col) {
+        FeatureScaling(X_val, X_val_scaled, X_mean, X_std);
+    }
+
+    Mat Y_val_scaled = Y_val;
+    if (scale_y && Y_mean.row == 1 && Y_mean.col == Y_val.col) {
+        FeatureScaling(Y_val, Y_val_scaled, Y_mean, Y_std);
+    }
+
+    int patience = 15;
+    int wait = 0;
+    float best_val = numeric_limits<float>::infinity();
+    Mat best_W = W;
+    Mat best_B = B;
+
+    int n_batches = 0;
+    vector<Mat> X_mini;
+    vector<Mat> Y_mini;
+    if (batch_size > 0 && batch_size < X.row) {
+        n_batches = (X.row + batch_size - 1) / batch_size;
+        X_mini.resize(n_batches);
+        Y_mini.resize(n_batches);
+        for (int b = 0; b < n_batches; ++b) {
+            int start = b * batch_size;
+            int end = min(X.row, start + batch_size);
+            int current_rows = end - start;
+            X_mini[b] = Mat(current_rows, X.col);
+            Y_mini[b] = Mat(current_rows, Y.col);
+            for (int i = 0; i < current_rows; ++i) {
+                Copy_Vec(X_scaled.data.data() + (start + i) * X.col, X_mini[b].data.data() + i * X.col, X.col);
+                Copy_Vec(Y_scaled.data.data() + (start + i) * Y.col, Y_mini[b].data.data() + i * Y.col, Y.col);
+            }
+        }
+    }
+
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        if (n_batches > 0) {
+            for (int b = 0; b < n_batches; ++b) {
+                Train_LN(X_mini[b], Y_mini[b], W, B, learning_rate, 1, history, loss_type, regularization, lambda);
+            }
+        } else {
+            Train_LN(X_scaled, Y_scaled, W, B, learning_rate, 1, history, loss_type, regularization, lambda);
+        }
+
+        Mat Y_pred_val;
+        predict(X_val, Y_pred_val);
+        float val_loss = Loss_Cal(Y_val, Y_pred_val, loss_type);
+        if (val_loss < best_val) {
+            best_val = val_loss;
+            wait = 0;
+            best_W = W;
+            best_B = B;
+        } else {
+            wait++;
+            if (wait >= patience) {
+                W = best_W;
+                B = best_B;
+                break;
+            }
+        }
+    }
+}
+
+void LinearRegression::predict(const Mat& X, Mat& Y_pred) const {
+    Mat X_scaled = X;
+    if (X_mean.row == 1 && X_mean.col == X.col) {
+        FeatureScaling(X, X_scaled, const_cast<Mat&>(X_mean), const_cast<Mat&>(X_std));
+    }
+    mxm(X_scaled, W, Y_pred);
+    Y_pred += B;
+    if (Y_mean.row == 1 && Y_mean.col == Y_pred.col) {
+        Rescale_Y(Y_pred, const_cast<Mat&>(Y_mean), const_cast<Mat&>(Y_std));
+    }
+}
+
+Mat LinearRegression::predict(const Mat& X) const {
+    Mat Y_pred(X.row, W.col);
+    predict(X, Y_pred);
+    return Y_pred;
+}
+
+void LinearRegression::evaluate(const Mat& Y_true, const Mat& Y_pred, float threshold) const {
+    if (loss_type == "MSE" || loss_type == "MAE") {
+        float mse = MSE(Y_true, Y_pred);
+        float mae = MAE(Y_true, Y_pred);
+        cout << "\nRoot Mean Squared Error: " << sqrtf(2 * mse) << endl;
+        cout << "Mean Absolute Error: " << mae << endl;
+    }
+}
+
+float LinearRegression::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type, float threshold) const {
+    if (loss_type == "MSE") {
+        float mse = MSE(Y_true, Y_pred);
+        cout << "\nRoot Mean Squared Error: " << sqrtf(2 * mse) << endl;
+        return mse;
+    } else if (loss_type == "MAE") {
+        float mae = MAE(Y_true, Y_pred);
+        cout << "Mean Absolute Error: " << mae << endl;
+        return mae;
+    }
+    return 0.0f;
+}
+
+LogisticRegression::LogisticRegression(const string& loss_type, const string& regularization,
+                                       float lambda, int batch_size)
+    : loss_type(loss_type), regularization(regularization), lambda(lambda), batch_size(batch_size),
+      X_mean(1, 0), X_std(1, 0), Y_mean(1, 0), Y_std(1, 0) {}
+
+void LogisticRegression::fit(const Mat& X, const Mat& Y, float learning_rate, int epochs, Loss_History& history) {
+    W = Mat(X.col, Y.col);
+    B = Mat(1, Y.col);
+    W.rand();
+    B.rand();
+
+    Mat X_scaled = X;
+    FeatureScaling(X, X_scaled, X_mean, X_std, "standard");
+
+    Mat Y_scaled = Y;
+
+    if (batch_size > 0 && batch_size < X.row) {
+        int n_batches = (X.row + batch_size - 1) / batch_size;
+        vector<Mat> X_mini(n_batches);
+        vector<Mat> Y_mini(n_batches);
+        for (int b = 0; b < n_batches; ++b) {
+            int start = b * batch_size;
+            int end = min(X.row, start + batch_size);
+            int current_rows = end - start;
+            X_mini[b] = Mat(current_rows, X.col);
+            Y_mini[b] = Mat(current_rows, Y.col);
+            for (int i = 0; i < current_rows; ++i) {
+                Copy_Vec(X_scaled.data.data() + (start + i) * X.col, X_mini[b].data.data() + i * X.col, X.col);
+                Copy_Vec(Y_scaled.data.data() + (start + i) * Y.col, Y_mini[b].data.data() + i * Y.col, Y.col);
+            }
+        }
+        for (int epoch = 0; epoch < epochs; ++epoch) {
+            for (int b = 0; b < n_batches; ++b) {
+                Train_LG_BIN(X_mini[b], Y_mini[b], W, B, learning_rate, 1, history, regularization, lambda);
+            }
+        }
+    } else {
+        Train_LG_BIN(X_scaled, Y_scaled, W, B, learning_rate, epochs, history, regularization, lambda);
+    }
+}
+
+void LogisticRegression::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val,
+                                        float learning_rate, int epochs, Loss_History& history) {
+    W = Mat(X.col, Y.col);
+    B = Mat(1, Y.col);
+    W.rand();
+    B.rand();
+
+    Mat X_scaled = X;
+    FeatureScaling(X, X_scaled, X_mean, X_std, "standard");
+
+    Mat Y_scaled = Y;
+
+    Mat X_val_scaled = X_val;
+    if (X_mean.row == 1 && X_mean.col == X_val.col) {
+        FeatureScaling(X_val, X_val_scaled, X_mean, X_std);
+    }
+
+    Mat Y_val_scaled = Y_val;
+
+    int patience = 15;
+    int wait = 0;
+    float best_val = numeric_limits<float>::infinity();
+    Mat best_W = W;
+    Mat best_B = B;
+
+    int n_batches = 0;
+    vector<Mat> X_mini;
+    vector<Mat> Y_mini;
+    if (batch_size > 0 && batch_size < X.row) {
+        n_batches = (X.row + batch_size - 1) / batch_size;
+        X_mini.resize(n_batches);
+        Y_mini.resize(n_batches);
+        for (int b = 0; b < n_batches; ++b) {
+            int start = b * batch_size;
+            int end = min(X.row, start + batch_size);
+            int current_rows = end - start;
+            X_mini[b] = Mat(current_rows, X.col);
+            Y_mini[b] = Mat(current_rows, Y.col);
+            for (int i = 0; i < current_rows; ++i) {
+                Copy_Vec(X_scaled.data.data() + (start + i) * X.col, X_mini[b].data.data() + i * X.col, X.col);
+                Copy_Vec(Y_scaled.data.data() + (start + i) * Y.col, Y_mini[b].data.data() + i * Y.col, Y.col);
+            }
+        }
+    }
+
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        if (n_batches > 0) {
+            for (int b = 0; b < n_batches; ++b) {
+                Train_LG_BIN(X_mini[b], Y_mini[b], W, B, learning_rate, 1, history, regularization, lambda);
+            }
+        } else {
+            Train_LG_BIN(X_scaled, Y_scaled, W, B, learning_rate, 1, history, regularization, lambda);
+        }
+
+        Mat Y_pred_val;
+        predict(X_val, Y_pred_val);
+        float val_loss = Loss_Cal(Y_val, Y_pred_val, loss_type);
+        if (val_loss < best_val) {
+            best_val = val_loss;
+            wait = 0;
+            best_W = W;
+            best_B = B;
+        } else {
+            wait++;
+            if (wait >= patience) {
+                W = best_W;
+                B = best_B;
+                break;
+            }
+        }
+    }
+}
+
+void LogisticRegression::predict(const Mat& X, Mat& Y_pred) const {
+    Mat X_scaled = X;
+    if (X_mean.row == 1 && X_mean.col == X.col) {
+        FeatureScaling(X, X_scaled, const_cast<Mat&>(X_mean), const_cast<Mat&>(X_std));
+    }
+    mxm(X_scaled, W, Y_pred);
+    Y_pred += B;
+    Sigmoid(Y_pred, Y_pred);
+}
+
+Mat LogisticRegression::predict(const Mat& X) const {
+    Mat Y_pred(X.row, W.col);
+    predict(X, Y_pred);
+    return Y_pred;
+}
+
+void LogisticRegression::evaluate(const Mat& Y_true, const Mat& Y_pred, float threshold) const {
+    if (loss_type == "BCE") {
+        float precision , recall , f1;
+        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
+        Mat Y_hat (Y_pred.row, Y_pred.col);
+        apply(Y_pred, Y_hat, [threshold](float x) {return (x > threshold) ? 1.0f : 0.0f;});
+        
+        Mat ConfusionMat(Y_pred.col, Y_pred.col);
+        for (int i = 0; i < Y_true.row; i++) {
+            int idx_ytrue = -1, idx_yhat = -1;
+            for (int j = 0; j < Y_true.col; j++) {
+                if (Y_true(i, j)) idx_ytrue = j;
+                if (Y_hat(i, j)) idx_yhat = j;
+                if (idx_yhat != -1 && idx_ytrue != -1) break;
+            }
+            ConfusionMat(idx_ytrue, idx_yhat)++;
+        }
+        
+        int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
+        Mat soc (1, ConfusionMat.row); Sum_Cols(ConfusionMat, soc);
+        Mat sor (1, ConfusionMat.col); Sum_Rows(ConfusionMat, sor);
+        
+        for (int i = 0; i < ConfusionMat.row; i++) {
+            int tp = (int)ConfusionMat(i, i);
+            int fp = sor.data[i] - tp;
+            int fn = soc.data[i] - tp;
+            precision = Precision(tp, fp); macro_precision += precision;
+            recall = Recall(tp, fn); macro_recall += recall;
+            f1 = F1_Score(precision, recall); macro_f1 += f1;
+        }
+        cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl;
+        cout << "Macro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
+        cout << "Macro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
+    }
+}
+
+float LogisticRegression::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type, float threshold) const {
+    if (loss_type == "BCE") {
+        float precision , recall , f1;
+        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
+        Mat Y_hat (Y_pred.row, Y_pred.col);
+        apply(Y_pred, Y_hat, [threshold](float x) {return (x > threshold) ? 1.0f : 0.0f;});
+        
+        Mat ConfusionMat(Y_pred.col, Y_pred.col);
+        for (int i = 0; i < Y_true.row; i++) {
+            int idx_ytrue = -1, idx_yhat = -1;
+            for (int j = 0; j < Y_true.col; j++) {
+                if (Y_true(i, j)) idx_ytrue = j;
+                if (Y_hat(i, j)) idx_yhat = j;
+                if (idx_yhat != -1 && idx_ytrue != -1) break;
+            }
+            ConfusionMat(idx_ytrue, idx_yhat)++;
+        }
+        
+        int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
+        Mat soc (1, ConfusionMat.row); Sum_Cols(ConfusionMat, soc);
+        Mat sor (1, ConfusionMat.col); Sum_Rows(ConfusionMat, sor);
+        
+        for (int i = 0; i < ConfusionMat.row; i++) {
+            int tp = (int)ConfusionMat(i, i);
+            int fp = sor.data[i] - tp;
+            int fn = soc.data[i] - tp;
+            precision = Precision(tp, fp); macro_precision += precision;
+            recall = Recall(tp, fn); macro_recall += recall;
+            f1 = F1_Score(precision, recall); macro_f1 += f1;
+        }
+        
+        if (eval_type == "precision") {
+            cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl;
+            return (float)macro_precision / ConfusionMat.row;
+        } else if (eval_type == "recall") {
+            cout << "\nMacro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
+            return (float)macro_recall / ConfusionMat.row;
+        } else if (eval_type == "f1_score") {
+            cout << "\nMacro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
+            return (float)macro_f1 / ConfusionMat.row;
+        }
+    }
+    return 0.0f;
 }

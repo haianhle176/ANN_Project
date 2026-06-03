@@ -1,12 +1,14 @@
 #ifndef MatLib_H 
 #define MatLib_H
-#include<vector>
-#include <iostream>
-#include <string>
-#include <chrono>
+#include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <iomanip>
+#include <iostream>
+#include <limits>
 #include <sstream>
+#include <string>
+#include <vector>
 using namespace std;
 using namespace std::chrono;
 
@@ -48,7 +50,91 @@ struct Loss_History {
     void print();
     void print_final();
 };
-void Init_Node(vector<Mat>& W, vector<Mat>& B,vector <int> hidden_nodes, int input_dim, int output_dim);
+
+class MLP {
+public:
+    vector<Mat> W;
+    vector<Mat> B;
+    vector<int> hidden_nodes;
+    string loss_type;
+    string regularization;
+    float lambda;
+    float pkeep;
+    int batch_size;
+    Mat X_mean;
+    Mat X_std;
+    Mat Y_mean;
+    Mat Y_std;
+
+    MLP(const vector<int>& hidden_nodes = {}, const string& loss_type = "MSE",
+        const string& regularization = "", float lambda = 0.0f,
+        float pkeep = 1.0f, int batch_size = 0);
+
+    void fit(const Mat& X, const Mat& Y, float learning_rate, int epochs, Loss_History& history);
+    void fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val,
+                        float learning_rate, int epochs, Loss_History& history);
+    void predict(const Mat& X, Mat& Y_pred) const;
+    Mat predict(const Mat& X) const;
+    void k_fold(const Mat& X, const Mat& Y, int K, bool shuffle, float learning_rate, int epochs);
+    void evaluate(const Mat& Y_true, const Mat& Y_pred, float threshold = 0.5f) const;
+    float evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type, float threshold = 0.5f) const;
+
+private:
+    void initialize_weights(int input_dim, int output_dim);
+    void scale_training_data(const Mat& X, const Mat& Y, Mat& X_scaled, Mat& Y_scaled);
+    void scale_validation_data(const Mat& X_val, const Mat& Y_val, Mat& X_val_scaled,
+                               Mat& Y_val_scaled);
+};
+
+class LinearRegression {
+public:
+    Mat W;
+    Mat B;
+    string loss_type;
+    string regularization;
+    float lambda;
+    int batch_size;
+    Mat X_mean;
+    Mat X_std;
+    Mat Y_mean;
+    Mat Y_std;
+
+    LinearRegression(const string& loss_type = "MSE", const string& regularization = "",
+                     float lambda = 0.0f, int batch_size = 0);
+
+    void fit(const Mat& X, const Mat& Y, float learning_rate, int epochs, Loss_History& history);
+    void fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val,
+                        float learning_rate, int epochs, Loss_History& history);
+    void predict(const Mat& X, Mat& Y_pred) const;
+    Mat predict(const Mat& X) const;
+    void evaluate(const Mat& Y_true, const Mat& Y_pred, float threshold = 0.5f) const;
+    float evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type, float threshold = 0.5f) const;
+};
+
+class LogisticRegression {
+public:
+    Mat W;
+    Mat B;
+    string loss_type;
+    string regularization;
+    float lambda;
+    int batch_size;
+    Mat X_mean;
+    Mat X_std;
+    Mat Y_mean;
+    Mat Y_std;
+
+    LogisticRegression(const string& loss_type = "BCE", const string& regularization = "",
+                       float lambda = 0.0f, int batch_size = 0);
+
+    void fit(const Mat& X, const Mat& Y, float learning_rate, int epochs, Loss_History& history);
+    void fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val,
+                        float learning_rate, int epochs, Loss_History& history);
+    void predict(const Mat& X, Mat& Y_pred) const;
+    Mat predict(const Mat& X) const;
+    void evaluate(const Mat& Y_true, const Mat& Y_pred, float threshold = 0.5f) const;
+    float evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type, float threshold = 0.5f) const;
+};
 void mxm(const Mat& src1, const Mat& src2, Mat& dst);
 void mxm_block_tilt(const Mat& src1, const Mat& src2, Mat& dst);
 void mtxm(const Mat& src1, const Mat& src2, Mat& dst);
@@ -125,11 +211,6 @@ float BCE(const Mat& Y, const Mat& P, string regularization, float lambda, const
 float Loss_Cal(const Mat& Y, const Mat& Y_hat, string loss_type);
 
 float CCE(const Mat& Y, const Mat& P, string regularization, float lambda, const Mat& W);
-float VIF_Cal(const float* X,const float *X_pred ,float X_mean,int n);
-void VIF(const Mat& X, Mat& VIF_mat);
-void ShowVIF(const Mat& X);
-void ModelEvaluation(const Mat& Y_true, const Mat& Y_pred, string loss_type, float threshold = 0.5f);
-float ModelEvaluation(const Mat& Y_true, const Mat& Y_pred, string loss_type, string eval_type, float threshold = 0.5f);
 void FeatureScaling(const Mat& src, Mat& dst, Mat& mean_mat, Mat& std_mat, string loss_type = "standard");
 void FeatureScaling(Mat& dst, Mat& mean_mat, Mat& inv_std_mat);
 void Rescale_Weight(Mat& W, Mat& B, Mat& mean_mat, Mat& inv_std_mat);
@@ -278,17 +359,5 @@ void Train_MLP(const Mat& X, const Mat& Y, vector<Mat>& W, vector<Mat>& B, vecto
      string loss_type, float pkeep, int batch_size);
 void Train_MLP(const Mat& X, const Mat& Y, const Mat& X_Val, const Mat& Y_Val, vector<Mat>& W, vector<Mat>& B, vector <int> hidden_nodes, float learning_rate,
      int epochs, Loss_History& history, string loss_type, float pkeep, int batch_size);
-void LinearRegression(Mat& X, Mat& Y, Mat& W, Mat& B, float learning_rate, int epochs, Loss_History& history,
-     string loss_type , string regularization = "none", float lambda = 0.0f);
-void LogisticRegression_Binary(Mat& X, Mat& Y, Mat& W, Mat& B, float learning_rate, int epochs, Loss_History& history,
-     string regularization = "none", float lambda = 0.0f);
-void MLP(Mat& X, Mat& Y, vector<Mat>& W, vector<Mat>& B, vector <int> hidden_nodes, float learning_rate, int epochs, Loss_History& history,
-     string loss_type , string regularization, float lambda);
-void MLP(Mat& X, Mat& Y, vector<Mat>& W, vector<Mat>& B, vector <int> hidden_nodes, float learning_rate, int epochs, Loss_History& history,
-     string loss_type , float pkeep, int batch_size);
-void MLP(Mat& X, Mat& Y, Mat& X_Val, Mat& Y_Val, vector<Mat>& W, vector<Mat>& B, vector <int> hidden_nodes, float learning_rate,
-     int epochs, Loss_History& history, string loss_type , float pkeep, int batch_size);
-void K_Fold_MLP(const Mat& X, const Mat& Y, int K, bool shuffle, vector <int> hidden_nodes, float learning_rate, int epoch, string loss_type , float pkeep, int batch_size);
-
 
 #endif
