@@ -919,6 +919,140 @@ vector<int> indices_shuffle(int size, std::mt19937& gen){
     std::shuffle(indices.begin(), indices.end(), gen);
     return indices;
 }
+float evaluateModel(const Mat& Y_true, const Mat& Y_pred, string eval_type, string type){
+    if (type == "clf"){
+    float precision , recall , f1;
+    float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
+    Mat ConfusionMat(Y_pred.col, Y_pred.col);
+    for (int i = 0;i < Y_true.row;i++){
+        int idx_ytrue = -1, idx_yhat = -1;
+        for (int j = 0;j < Y_true.col; j++){
+            if (Y_true(i,j)) idx_ytrue = j;
+            if (Y_pred(i,j)) idx_yhat = j;
+            if (idx_yhat != -1 && idx_ytrue != -1) break;
+        }
+        ConfusionMat(idx_ytrue , idx_yhat)++;
+    }
+        int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
+        Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
+        Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
+        for (int i = 0; i < ConfusionMat.row; i++){
+            int tp = (int)ConfusionMat(i,i);
+            int fp = sor.data[i] - tp;
+            int fn = soc.data[i] - tp;
+            int tn = total_sum - tp - fp - fn;
+            precision = Precision(tp, fp); macro_precision += precision;
+            recall = Recall(tp, fn); macro_recall += recall;
+            f1 = F1_Score(precision, recall); macro_f1 += f1;
+        }
+        if (eval_type == "precision" ) {
+            return (float)macro_precision / ConfusionMat.row;
+        }
+        else if (eval_type == "recall" ) {
+            return (float)macro_recall / ConfusionMat.row;
+        }
+        else if (eval_type == "f1_score") {
+            return (float)macro_f1 / ConfusionMat.row;
+        }
+        else return -1e3f;
+    }
+    else if (type == "reg"){
+        if (eval_type == "MAE") {
+            float mae = MAE(Y_true, Y_pred);
+            return mae;
+        }
+        else if (eval_type == "RMSE") {
+        float rmse = sqrtf(2* MSE(Y_true, Y_pred));
+        return rmse;
+        }
+    }
+    return 0.0f;
+}
+void evaluateModel(const Mat& Y_true, const Mat& Y_pred, string type){
+        if (type == "clf"){
+        float precision , recall , f1;
+        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
+        Mat ConfusionMat(Y_pred.col, Y_pred.col);
+        for (int i = 0;i < Y_true.row;i++){
+            int idx_ytrue = -1, idx_yhat = -1;
+            for (int j = 0;j < Y_true.col; j++){
+                if (Y_true(i,j)) idx_ytrue = j;
+                if (Y_pred(i,j)) idx_yhat = j;
+                if (idx_yhat != -1 && idx_ytrue != -1) break;
+            }
+            ConfusionMat(idx_ytrue , idx_yhat)++;
+        }
+        int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
+        Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
+        Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
+        for (int i = 0; i < ConfusionMat.row; i++){
+            int tp = (int)ConfusionMat(i,i);
+            int fp = sor.data[i] - tp;
+            int fn = soc.data[i] - tp;
+            int tn = total_sum - tp - fp - fn;
+            precision = Precision(tp, fp); macro_precision += precision;
+            recall = Recall(tp, fn); macro_recall += recall;
+            f1 = F1_Score(precision, recall); macro_f1 += f1;
+        }
+            cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl; 
+            cout << "\nMacro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
+            cout << "\nMacro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
+    }
+    else if (type == "reg"){
+        float mse = MSE(Y_true, Y_pred);
+        float mae = MAE(Y_true, Y_pred);
+        cout << "\nRoot Mean Squared Error: " << sqrtf(2* mse) << endl;
+        cout << "Mean Absolute Error: " << mae << endl;
+    }
+}
+void K_Fold_Evaluate(Model* ML,const Mat& X, const Mat& Y, int K, bool shuffle, string type, string eval_type){
+    int N = X.row;
+    int fold_size = N / K;
+
+    vector<int> indices(N);
+    for (int i = 0; i < N; i++) indices[i] = i;
+
+    if (shuffle) {
+        static mt19937 rng(chrono::high_resolution_clock::now().time_since_epoch().count());
+        std::shuffle(indices.begin(), indices.end(), rng);
+    }
+
+    Mat X_Val(fold_size, X.col), Y_Val(fold_size, Y.col);
+    Mat X_Train((N - fold_size), X.col), Y_Train((N - fold_size), Y.col);
+    float avr_score = 0.0f;
+    float fold_score ;
+    for (int k = 0; k < K; k++) {
+        int val_start = k * fold_size;
+        int val_end   = val_start + fold_size;
+
+        for (int i = 0; i < fold_size; i++) {
+            int src_row = indices[val_start + i];
+            Copy_Vec(X.data.data() + src_row * X.col,
+                     X_Val.data.data() + i * X.col, X.col);
+            Copy_Vec(Y.data.data() + src_row * Y.col,
+                     Y_Val.data.data() + i * Y.col, Y.col);
+        }
+
+        int dst_row = 0;
+        for (int i = 0; i < N; i++) {
+            if (i >= val_start && i < val_end) continue;
+            int src_row = indices[i];
+            Copy_Vec(X.data.data() + src_row * X.col,
+                     X_Train.data.data() + dst_row * X.col, X.col);
+            Copy_Vec(Y.data.data() + src_row * Y.col,
+                     Y_Train.data.data() + dst_row * Y.col, Y.col);
+            dst_row++;
+        }
+
+        ML->fit(X_Train, Y_Train);
+        Mat Y_Pred = ML->predict(X_Val);
+        cout << "\nFold " << k + 1 << endl;
+        fold_score = ML->evaluate(Y_Val, Y_Pred, eval_type);
+        cout << "Fold " << k + 1 << " Score: " << fold_score << " ("<< eval_type << ")" <<endl;
+        avr_score += fold_score;
+    }
+    cout << "\nAverage score: " << avr_score / K << endl;
+}
 float Precision(float TP, float FP){
     if (TP + FP == 0) return 0.0f;
     else return (float)TP/(TP + FP);
@@ -1160,6 +1294,20 @@ int EarlyStop(const Mat& X_Val, const Mat& Y_Val, vector <Mat>& W,vector <Mat>& 
         }
     }
     return 0;
+}
+void shuffleMatrixColumn(Mat& X, int colIndex, std::mt19937& gen) {
+    int numRows = X.row;
+    if (numRows <= 1) return;
+
+    // Thuật toán Fisher-Yates áp dụng riêng cho chỉ số dòng của một cột
+    for (int i = numRows - 1; i > 0; --i) {
+        // Sinh một số nguyên ngẫu nhiên j trong khoảng [0, i]
+        std::uniform_int_distribution<int> distrib(0, i);
+        int j = distrib(gen);
+
+        // Hoán đổi giá trị tại cột colIndex giữa dòng i và dòng j
+        std::swap(X(i,colIndex), X(j, colIndex));
+    }
 }
 void FeatureScaling(const Mat& src, Mat& dst,  Mat& mean_mat, Mat& std_mat, bool fit) {
     if (fit) {
@@ -1536,60 +1684,15 @@ void Train_MLP(const Mat& X, const Mat& Y, const Mat& X_Val, const Mat& Y_Val, v
     }
 }
 
-void MLP::k_fold(const Mat& X, const Mat& Y, int K, bool shuffle, float learning_rate, int epochs) {
-    int N = X.row;
-    int fold_size = N / K;
-
-    // Tạo index [0, 1, 2, ..., N-1]
-    vector<int> indices(N);
-    for (int i = 0; i < N; i++) indices[i] = i;
-
-    // Shuffle index MỘT LẦN duy nhất trước khi chia fold
-    if (shuffle) {
-        static mt19937 rng(chrono::high_resolution_clock::now().time_since_epoch().count());
-        std::shuffle(indices.begin(), indices.end(), rng);
-    }
-
-    Mat X_Val(fold_size, X.col), Y_Val(fold_size, Y.col);
-    Mat X_Train((N - fold_size), X.col), Y_Train((N - fold_size), Y.col);
-    Loss_History history;
-    float avr_point = 0.0f;
-
-    for (int k = 0; k < K; k++) {
-        int val_start = k * fold_size;
-        int val_end   = val_start + fold_size; // exclusive
-
-        // --- Copy Val fold ---
-        for (int i = 0; i < fold_size; i++) {
-            int src_row = indices[val_start + i];
-            Copy_Vec(X.data.data() + src_row * X.col,
-                     X_Val.data.data() + i * X.col, X.col);
-            Copy_Vec(Y.data.data() + src_row * Y.col,
-                     Y_Val.data.data() + i * Y.col, Y.col);
-        }
-
-        // --- Copy Train (tất cả fold còn lại) ---
-        int dst_row = 0;
-        for (int i = 0; i < N; i++) {
-            if (i >= val_start && i < val_end) continue; // bỏ qua val fold
-            int src_row = indices[i];
-            Copy_Vec(X.data.data() + src_row * X.col,
-                     X_Train.data.data() + dst_row * X.col, X.col);
-            Copy_Vec(Y.data.data() + src_row * Y.col,
-                     Y_Train.data.data() + dst_row * Y.col, Y.col);
-            dst_row++;
-        }
-
-        this->fit_with_valid(X_Train, Y_Train, X_Val, Y_Val, learning_rate, epochs, history);
-        Mat Y_Pred = this->predict(X_Val);
-        cout << "\nFold " << k + 1 << endl;
-        avr_point += this->evaluate(Y_Val, Y_Pred, "f1_score");
-    }
-    cout << "\nAverage result: " << avr_point / K << endl;
+void MLP::k_fold(const Mat& X, const Mat& Y, int K, string eval_type, bool shuffle) {
+    string type = (loss_type == "MSE" || loss_type == "MAE") ? "reg" : "clf";
+    K_Fold_Evaluate(this, X, Y, K, shuffle, type,  eval_type);
 }
 
-MLP::MLP(const vector<int>& hidden_nodes, const string& loss_type, float pkeep, int batch_size, const string& regularization, float lambda)
-    : hidden_nodes(hidden_nodes), loss_type(loss_type), regularization(regularization),
+MLP::MLP(const vector<int>& hidden_nodes, const string& loss_type, float learning_rate, int epoch,
+     float pkeep, int batch_size, const string& regularization, float lambda)
+    : hidden_nodes(hidden_nodes), loss_type(loss_type), learning_rate(learning_rate), epochs(epochs),
+      regularization(regularization),
       lambda(lambda), pkeep(pkeep), batch_size(batch_size), X_mean(1, 0), X_std(1, 0),
       Y_mean(1, 0), Y_std(1, 0) {
     int layer_count = static_cast<int>(hidden_nodes.size()) + 1;
@@ -1637,7 +1740,7 @@ void MLP::scale_validation_data(const Mat& X_val, const Mat& Y_val, Mat& X_val_s
     }
 }
 
-void MLP::fit(const Mat& X, const Mat& Y, float learning_rate, int epochs, Loss_History& history) {
+void MLP::fit(const Mat& X, const Mat& Y) {
     initialize_weights(X.col, Y.col);
     Mat X_scaled, Y_scaled;
     scale_training_data(X, Y, X_scaled, Y_scaled);
@@ -1652,8 +1755,7 @@ void MLP::fit(const Mat& X, const Mat& Y, float learning_rate, int epochs, Loss_
     }
 }
 
-void MLP::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val,
-                         float learning_rate, int epochs, Loss_History& history) {
+void MLP::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val) {
     initialize_weights(X.col, Y.col);
     Mat X_scaled, Y_scaled;
     scale_training_data(X, Y, X_scaled, Y_scaled);
@@ -1681,115 +1783,40 @@ Mat MLP::predict(const Mat& X) const {
     return Y_pred;
 }
 
-void MLP::evaluate(const Mat& Y_true, const Mat& Y_pred, float threshold) const {
+void MLP::evaluate(const Mat& Y_true, const Mat& Y_pred) const {
     if (loss_type == "BCE" || loss_type == "CCE"){
-        float precision , recall , f1;
-        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
         Mat Y_hat (Y_pred.row,Y_pred.col);
-        Mat ConfusionMat(Y_pred.col, Y_pred.col);
-        if (loss_type == "BCE") apply(Y_pred, Y_hat, [threshold](float x) {return (x > threshold) ? 1.0f : 0.0f;});
+        if (loss_type == "BCE") apply(Y_pred, Y_hat, [this](float x) {return (x > threshold) ? 1.0f : 0.0f;});
         else {
             for (int i = 0; i < Y_hat.row; i++) {
-		        int pred_class = 0;
+                int pred_class = 0;
                 for (int j = 1; j < Y_hat.col; j++) if (Y_pred(i, j) > Y_pred(i, pred_class)) pred_class = j;
                 Y_hat(i,pred_class) = 1.0f; 
             }
-            for (int i = 0;i < Y_true.row;i++){
-                int idx_ytrue = -1, idx_yhat = -1;
-                for (int j = 0;j < Y_true.col; j++){
-                    if (Y_true(i,j)) idx_ytrue = j;
-                    if (Y_hat(i,j)) idx_yhat = j;
-                    if (idx_yhat != -1 && idx_ytrue != -1) break;
-                }
-                ConfusionMat(idx_ytrue , idx_yhat)++;
-            }
-            int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
-            Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
-            Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
-            for (int i = 0; i < ConfusionMat.row; i++){
-                int tp = (int)ConfusionMat(i,i);
-                int fp = sor.data[i] - tp;
-                int fn = soc.data[i] - tp;
-                int tn = total_sum - tp - fp - fn;
-                precision = Precision(tp, fp); macro_precision += precision;
-                recall = Recall(tp, fn); macro_recall += recall;
-                f1 = F1_Score(precision, recall); macro_f1 += f1;
-            }
-            cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl;
-            cout << "Macro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
-            cout << "Macro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
         }
+        evaluateModel(Y_true, Y_hat, "clf");
     }
     else if (loss_type == "MSE" || loss_type == "MAE"){
-        float mse = MSE(Y_true, Y_pred);
-        float mae = MAE(Y_true, Y_pred);
-        cout << "\nRoot Mean Squared Error: " << sqrtf(2* mse) << endl;
-        cout << "Mean Absolute Error: " << mae << endl;
+        evaluateModel(Y_true, Y_pred, "reg");
     }
 }
-
-float MLP::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type, float threshold) const {
+float MLP::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type) const {
     if (loss_type == "BCE" || loss_type == "CCE"){
-        float precision , recall , f1;
-        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
         Mat Y_hat (Y_pred.row,Y_pred.col);
-        Mat ConfusionMat(Y_pred.col, Y_pred.col);
-        if (loss_type == "BCE") apply(Y_pred, Y_hat, [threshold](float x) {return (x > threshold) ? 1.0f : 0.0f;});
+        if (loss_type == "BCE") apply(Y_pred, Y_hat, [this](float x) {return (x > threshold) ? 1.0f : 0.0f;});
         else {
             for (int i = 0; i < Y_hat.row; i++) {
-		        int pred_class = 0;
+                int pred_class = 0;
                 for (int j = 1; j < Y_hat.col; j++) if (Y_pred(i, j) > Y_pred(i, pred_class)) pred_class = j;
                 Y_hat(i,pred_class) = 1.0f; 
             }
-            for (int i = 0;i < Y_true.row;i++){
-                int idx_ytrue = -1, idx_yhat = -1;
-                for (int j = 0;j < Y_true.col; j++){
-                    if (Y_true(i,j)) idx_ytrue = j;
-                    if (Y_hat(i,j)) idx_yhat = j;
-                    if (idx_yhat != -1 && idx_ytrue != -1) break;
-                }
-                ConfusionMat(idx_ytrue , idx_yhat)++;
-            }
-            int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
-            Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
-            Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
-            for (int i = 0; i < ConfusionMat.row; i++){
-                int tp = (int)ConfusionMat(i,i);
-                int fp = sor.data[i] - tp;
-                int fn = soc.data[i] - tp;
-                int tn = total_sum - tp - fp - fn;
-                precision = Precision(tp, fp); macro_precision += precision;
-                recall = Recall(tp, fn); macro_recall += recall;
-                f1 = F1_Score(precision, recall); macro_f1 += f1;
-            }
-            if (eval_type == "precision" ) {
-                cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl; 
-                return (float)macro_precision / ConfusionMat.row;
-            }
-            else if (eval_type == "recall" ) {
-                cout << "\nMacro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
-                return (float)macro_recall / ConfusionMat.row;
-            }
-            else if (eval_type == "f1_score") {
-                cout << "\nMacro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
-                return (float)macro_f1 / ConfusionMat.row;
-            }
-            else return -1e3f;
         }
+        return evaluateModel(Y_true, Y_hat, eval_type, "clf");
     }
-    else if (loss_type == "RMSE") {
-        float rmse = sqrtf(2* MSE(Y_true, Y_pred));
-        cout << "\nRoot Mean Squared Error: " << rmse << endl;
-        return rmse;
+    else if (loss_type == "MSE" || loss_type == "MAE"){
+        return evaluateModel(Y_true, Y_pred, eval_type, "reg");
     }
-    else if (loss_type == "MAE") {
-        float mae = MAE(Y_true, Y_pred);
-        cout << "Mean Absolute Error: " << mae << endl;
-        return mae;
-    }
-    return 0.0f;
 }
-
 float DecisionTree::gini_cal(const vector<int>& count, int total_samples){
     if (total_samples == 0) return 0.0f;
     float gini = 1.0f;
@@ -2078,141 +2105,13 @@ float DecisionTree:: predict(const float* X) const{
     return predict_single(X, root);
 }
 float DecisionTree::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type) const {
-    if (type == "clf"){
-    float precision , recall , f1;
-    float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
-    Mat ConfusionMat(Y_pred.col, Y_pred.col);
-    for (int i = 0;i < Y_true.row;i++){
-        int idx_ytrue = -1, idx_yhat = -1;
-        for (int j = 0;j < Y_true.col; j++){
-            if (Y_true(i,j)) idx_ytrue = j;
-            if (Y_pred(i,j)) idx_yhat = j;
-            if (idx_yhat != -1 && idx_ytrue != -1) break;
-        }
-        ConfusionMat(idx_ytrue , idx_yhat)++;
-    }
-        int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
-        Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
-        Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
-        for (int i = 0; i < ConfusionMat.row; i++){
-            int tp = (int)ConfusionMat(i,i);
-            int fp = sor.data[i] - tp;
-            int fn = soc.data[i] - tp;
-            int tn = total_sum - tp - fp - fn;
-            precision = Precision(tp, fp); macro_precision += precision;
-            recall = Recall(tp, fn); macro_recall += recall;
-            f1 = F1_Score(precision, recall); macro_f1 += f1;
-        }
-        if (eval_type == "precision" ) {
-            cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl; 
-            return (float)macro_precision / ConfusionMat.row;
-        }
-        else if (eval_type == "recall" ) {
-            cout << "\nMacro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
-            return (float)macro_recall / ConfusionMat.row;
-        }
-        else if (eval_type == "f1_score") {
-            cout << "\nMacro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
-            return (float)macro_f1 / ConfusionMat.row;
-        }
-        else return -1e3f;
-    }
-    else if (type == "reg"){
-        if (eval_type == "MAE") {
-            float mae = MAE(Y_true, Y_pred);
-            cout << "Mean Absolute Error: " << mae << endl;
-            return mae;
-        }
-        else if (eval_type == "RMSE") {
-        float rmse = sqrtf(2* MSE(Y_true, Y_pred));
-        cout << "\nRoot Mean Squared Error: " << rmse << endl;
-        return rmse;
-        }
-    }
-    return 0.0f;
+    return evaluateModel(Y_true, Y_pred, type, eval_type);
 }
 void DecisionTree::evaluate(const Mat& Y_true, const Mat& Y_pred) const {
-    if (type == "clf"){
-        float precision , recall , f1;
-        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
-        Mat ConfusionMat(Y_pred.col, Y_pred.col);
-        for (int i = 0;i < Y_true.row;i++){
-            int idx_ytrue = -1, idx_yhat = -1;
-            for (int j = 0;j < Y_true.col; j++){
-                if (Y_true(i,j)) idx_ytrue = j;
-                if (Y_pred(i,j)) idx_yhat = j;
-                if (idx_yhat != -1 && idx_ytrue != -1) break;
-            }
-            ConfusionMat(idx_ytrue , idx_yhat)++;
-        }
-        int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
-        Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
-        Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
-        for (int i = 0; i < ConfusionMat.row; i++){
-            int tp = (int)ConfusionMat(i,i);
-            int fp = sor.data[i] - tp;
-            int fn = soc.data[i] - tp;
-            int tn = total_sum - tp - fp - fn;
-            precision = Precision(tp, fp); macro_precision += precision;
-            recall = Recall(tp, fn); macro_recall += recall;
-            f1 = F1_Score(precision, recall); macro_f1 += f1;
-        }
-            cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl; 
-            cout << "\nMacro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
-            cout << "\nMacro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
-    }
-    else if (type == "reg"){
-        float mse = MSE(Y_true, Y_pred);
-        float mae = MAE(Y_true, Y_pred);
-        cout << "\nRoot Mean Squared Error: " << sqrtf(2* mse) << endl;
-        cout << "Mean Absolute Error: " << mae << endl;
-    }
+    evaluateModel(Y_true, Y_pred, type);
 }
-void DecisionTree::k_fold(const Mat& X, const Mat& Y, int K, bool shuffle){
-    int N = X.row;
-    int fold_size = N / K;
-
-    vector<int> indices(N);
-    for (int i = 0; i < N; i++) indices[i] = i;
-
-    if (shuffle) {
-        static mt19937 rng(chrono::high_resolution_clock::now().time_since_epoch().count());
-        std::shuffle(indices.begin(), indices.end(), rng);
-    }
-
-    Mat X_Val(fold_size, X.col), Y_Val(fold_size, Y.col);
-    Mat X_Train((N - fold_size), X.col), Y_Train((N - fold_size), Y.col);
-    float avr_score = 0.0f;
-
-    for (int k = 0; k < K; k++) {
-        int val_start = k * fold_size;
-        int val_end   = val_start + fold_size;
-
-        for (int i = 0; i < fold_size; i++) {
-            int src_row = indices[val_start + i];
-            Copy_Vec(X.data.data() + src_row * X.col,
-                     X_Val.data.data() + i * X.col, X.col);
-            Copy_Vec(Y.data.data() + src_row * Y.col,
-                     Y_Val.data.data() + i * Y.col, Y.col);
-        }
-
-        int dst_row = 0;
-        for (int i = 0; i < N; i++) {
-            if (i >= val_start && i < val_end) continue;
-            int src_row = indices[i];
-            Copy_Vec(X.data.data() + src_row * X.col,
-                     X_Train.data.data() + dst_row * X.col, X.col);
-            Copy_Vec(Y.data.data() + src_row * Y.col,
-                     Y_Train.data.data() + dst_row * Y.col, Y.col);
-            dst_row++;
-        }
-
-        fit(X_Train, Y_Train);
-        Mat Y_Pred = predict(X_Val);
-        cout << "\nFold " << k + 1 << endl;
-        avr_score += evaluate(Y_Val, Y_Pred, (type == "clf") ? "f1_score" : "MAE");
-    }
-    cout << "\nAverage K_fold score: " << avr_score / K << endl;
+void DecisionTree::k_fold(const Mat& X, const Mat& Y, int K, string eval_type, bool shuffle){
+    K_Fold_Evaluate(this, X, Y, K, shuffle, type, eval_type);
 }
 void DecisionTree:: fit_forest(const Mat& X, const Mat& Y, vector<int>& sample_indices, vector<int>& feature_indices){
     root = build_forest(X, Y, 0, sample_indices, feature_indices);
@@ -2266,7 +2165,7 @@ TreeNode* DecisionTree:: build_forest(const Mat&X, const Mat& Y, int depth, vect
     node->right = build_forest(X, Y, depth + 1, right_indices, feature_indices);
     return node;
 }
-vector <int> RandomForest::_bootstrap(int num_samples, std::mt19937& gen){
+vector <int> RandomForest::_bootstrap(int num_samples){
     std::uniform_int_distribution<> dis(0, num_samples - 1);
     std::vector<int> indices(num_samples);
     for (int i = 0; i < num_samples; i++) {
@@ -2323,8 +2222,8 @@ void RandomForest::fit(const Mat& X, const Mat& Y){
             #pragma omp for
             for (int i = 0; i < num_trees; i++) {
                 // Bước 1: Tạo mảng chỉ số dòng ngẫu nhiên cho cây thứ i
-                std::vector<int> sample_indices = _bootstrap(X.row, thread_gen);
-                std::vector<int> feature_indices = indices_shuffle(X.col, thread_gen);
+                std::vector<int> sample_indices = _bootstrap(X.row);
+                std::vector<int> feature_indices = indices_shuffle(X.col, gen);
                 forest[i].fit_forest(X, Y_idx, sample_indices, feature_indices);
             }
         }
@@ -2332,166 +2231,68 @@ void RandomForest::fit(const Mat& X, const Mat& Y){
     else{
         #pragma omp parallel
         {
-            std::random_device rd;
-            std::mt19937 thread_gen(std::chrono::high_resolution_clock::now().time_since_epoch().count() ^ omp_get_thread_num());
+            gen = mt19937(std::chrono::high_resolution_clock::now().time_since_epoch().count() ^ omp_get_thread_num());
             #pragma omp for
             for (int i = 0; i < num_trees; i++) {
                 // Bước 1: Tạo mảng chỉ số dòng ngẫu nhiên cho cây thứ i
-                std::vector<int> sample_indices = _bootstrap(X.row, thread_gen);
-                std::vector<int> feature_indices = indices_shuffle(X.col, thread_gen);
+                std::vector<int> sample_indices = _bootstrap(X.row);
+                std::vector<int> feature_indices = indices_shuffle(X.col, gen);
                 forest[i].fit_forest(X, Y, sample_indices, feature_indices);
             }
         }
     }
 }
 void RandomForest::evaluate(const Mat& Y_true, const Mat& Y_pred) const{
-    if (type == "clf"){
-        float precision , recall , f1;
-        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
-        Mat ConfusionMat(Y_pred.col, Y_pred.col);
-        for (int i = 0;i < Y_true.row;i++){
-            int idx_ytrue = -1, idx_yhat = -1;
-            for (int j = 0;j < Y_true.col; j++){
-                if (Y_true(i,j)) idx_ytrue = j;
-                if (Y_pred(i,j)) idx_yhat = j;
-                if (idx_yhat != -1 && idx_ytrue != -1) break;
-            }
-            ConfusionMat(idx_ytrue , idx_yhat)++;
-        }
-        int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
-        Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
-        Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
-        for (int i = 0; i < ConfusionMat.row; i++){
-            int tp = (int)ConfusionMat(i,i);
-            int fp = sor.data[i] - tp;
-            int fn = soc.data[i] - tp;
-            int tn = total_sum - tp - fp - fn;
-            precision = Precision(tp, fp); macro_precision += precision;
-            recall = Recall(tp, fn); macro_recall += recall;
-            f1 = F1_Score(precision, recall); macro_f1 += f1;
-        }
-            cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl; 
-            cout << "\nMacro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
-            cout << "\nMacro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
-    }
-    else if (type == "reg"){
-        float mse = MSE(Y_true, Y_pred);
-        float mae = MAE(Y_true, Y_pred);
-        cout << "\nRoot Mean Squared Error: " << sqrtf(2* mse) << endl;
-        cout << "Mean Absolute Error: " << mae << endl;
-    }
+    evaluateModel(Y_true, Y_pred, type);
 }
 float RandomForest::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type) const {
-    if (type == "clf"){
-    float precision , recall , f1;
-    float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
-    Mat ConfusionMat(Y_pred.col, Y_pred.col);
-    for (int i = 0;i < Y_true.row;i++){
-        int idx_ytrue = -1, idx_yhat = -1;
-        for (int j = 0;j < Y_true.col; j++){
-            if (Y_true(i,j)) idx_ytrue = j;
-            if (Y_pred(i,j)) idx_yhat = j;
-            if (idx_yhat != -1 && idx_ytrue != -1) break;
-        }
-        ConfusionMat(idx_ytrue , idx_yhat)++;
-    }
-        int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
-        Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
-        Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
-        for (int i = 0; i < ConfusionMat.row; i++){
-            int tp = (int)ConfusionMat(i,i);
-            int fp = sor.data[i] - tp;
-            int fn = soc.data[i] - tp;
-            int tn = total_sum - tp - fp - fn;
-            precision = Precision(tp, fp); macro_precision += precision;
-            recall = Recall(tp, fn); macro_recall += recall;
-            f1 = F1_Score(precision, recall); macro_f1 += f1;
-        }
-        if (eval_type == "precision" ) {
-            cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl; 
-            return (float)macro_precision / ConfusionMat.row;
-        }
-        else if (eval_type == "recall" ) {
-            cout << "\nMacro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
-            return (float)macro_recall / ConfusionMat.row;
-        }
-        else if (eval_type == "f1_score") {
-            cout << "\nMacro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
-            return (float)macro_f1 / ConfusionMat.row;
-        }
-        else return -1e3f;
-    }
-    else if (type == "reg"){
-        if (eval_type == "MAE") {
-            float mae = MAE(Y_true, Y_pred);
-            cout << "Mean Absolute Error: " << mae << endl;
-            return mae;
-        }
-        else if (eval_type == "RMSE") {
-        float rmse = sqrtf(2* MSE(Y_true, Y_pred));
-        cout << "\nRoot Mean Squared Error: " << rmse << endl;
-        return rmse;
-        }
-    }
-    return 0.0f;
+    return evaluateModel(Y_true, Y_pred, eval_type, type);
 }
-void RandomForest::k_fold(const Mat& X, const Mat& Y, int K, bool shuffle){
+void RandomForest::k_fold(const Mat& X, const Mat& Y, int K, string eval_type, bool shuffle){
     if (type == "clf") num_features_split = std::max(1, (int)std::sqrt(X.col));
     else if (type == "reg") num_features_split = std::max(1, X.col / 3);
     if (Y.col > 1) num_classes = Y.col;
     else num_classes = (int)*std::max_element(Y.data.begin(), Y.data.end()) + 1;
     forest.resize(num_trees, DecisionTree(type, max_depth, min_samples_split, num_classes));
-    int N = X.row;
-    int fold_size = N / K;
-
-    vector<int> indices(N);
-    for (int i = 0; i < N; i++) indices[i] = i;
-
-    if (shuffle) {
-        static mt19937 rng(chrono::high_resolution_clock::now().time_since_epoch().count());
-        std::shuffle(indices.begin(), indices.end(), rng);
-    }
-
-    Mat X_Val(fold_size, X.col), Y_Val(fold_size, Y.col);
-    Mat X_Train((N - fold_size), X.col), Y_Train((N - fold_size), Y.col);
-    float avr_score = 0.0f;
-
-    for (int k = 0; k < K; k++) {
-        int val_start = k * fold_size;
-        int val_end   = val_start + fold_size;
-
-        for (int i = 0; i < fold_size; i++) {
-            int src_row = indices[val_start + i];
-            Copy_Vec(X.data.data() + src_row * X.col,
-                     X_Val.data.data() + i * X.col, X.col);
-            Copy_Vec(Y.data.data() + src_row * Y.col,
-                     Y_Val.data.data() + i * Y.col, Y.col);
-        }
-
-        int dst_row = 0;
-        for (int i = 0; i < N; i++) {
-            if (i >= val_start && i < val_end) continue;
-            int src_row = indices[i];
-            Copy_Vec(X.data.data() + src_row * X.col,
-                     X_Train.data.data() + dst_row * X.col, X.col);
-            Copy_Vec(Y.data.data() + src_row * Y.col,
-                     Y_Train.data.data() + dst_row * Y.col, Y.col);
-            dst_row++;
-        }
-
-        fit(X_Train, Y_Train);
-        Mat Y_Pred = predict(X_Val);
-        cout << "\nFold " << k + 1 << endl;
-        avr_score += evaluate(Y_Val, Y_Pred, (type == "clf") ? "f1_score" : "MAE");
-    }
-    cout << "\nAverage K_fold score: " << avr_score / K << endl;
+    K_Fold_Evaluate(this, X, Y, K, shuffle, type, eval_type);
 }
-LinearRegression::LinearRegression(const string& loss_type, const string& regularization,
+void RandomForest::feature_importance(Mat& X, const Mat& Y_true){
+    Mat X_temp(X.row, X.col);
+    Mat Y_pred(Y_true.row,Y_true.col);
+    Y_pred = this->predict(X);
+    string eval_type = (type == "clf") ? "f1_score" : "MAE";
+    float base_line = evaluate(Y_true, Y_pred, eval_type);
+    int best_idx = 0, worst_idx = 0;
+    double best_val = 0, worst_val = 1e6;
+    for (int i = 0; i < X.col; i ++){
+        double sum = 0;
+        X_temp = X;
+        for (int j = 0; j < 10; j ++){
+            shuffleMatrixColumn(X_temp, i, gen);
+            Y_pred = this->predict(X_temp);
+            sum += evaluate(Y_true, Y_pred, eval_type);
+        }
+        sum/=10.0f;
+        sum = fabs(sum - base_line);
+        if (best_val < sum) {
+            best_idx = i;
+            best_val = sum;
+        }
+        if (worst_val > sum){
+            worst_idx = i;
+            worst_val = sum;
+        }
+        cout << "feature " << i + 1 << " score gap : " << sum <<endl;
+    }
+    cout << "Most important feature is feature " << best_idx + 1 << " with score gap = " << fixed << setprecision(5) << best_val << endl;
+    cout << "Least important feature is feature " << worst_idx + 1 << " with score gap = " << fixed << setprecision(5) << worst_val << endl; 
+}
+LinearRegression::LinearRegression(const string& loss_type,float learning_rate, int epochs, const string& regularization,
                                    float lambda, int batch_size)
-    : loss_type(loss_type), regularization(regularization), lambda(lambda), batch_size(batch_size),
-      X_mean(1, 0), X_std(1, 0), Y_mean(1, 0), Y_std(1, 0) {}
+    : loss_type(loss_type), learning_rate(learning_rate), epochs(epochs), regularization(regularization), lambda(lambda), batch_size(batch_size),
+      X_mean(1, 0), X_std(1, 0) {}
 
-void LinearRegression::fit(const Mat& X, const Mat& Y, float learning_rate, int epochs, Loss_History& history) {
+void LinearRegression::fit(const Mat& X, const Mat& Y) {
     W = Mat(X.col, Y.col);
     B = Mat(1, Y.col);
     W.rand();
@@ -2499,12 +2300,6 @@ void LinearRegression::fit(const Mat& X, const Mat& Y, float learning_rate, int 
 
     Mat X_scaled = X;
     FeatureScaling(X, X_scaled, X_mean, X_std);
-
-    Mat Y_scaled = Y;
-    bool scale_y = (loss_type == "MSE" || loss_type == "MAE");
-    if (scale_y) {
-        FeatureScaling(Y, Y_scaled, Y_mean, Y_std);
-    }
 
     if (batch_size > 0 && batch_size < X.row) {
         int n_batches = (X.row + batch_size - 1) / batch_size;
@@ -2518,7 +2313,7 @@ void LinearRegression::fit(const Mat& X, const Mat& Y, float learning_rate, int 
             Y_mini[b] = Mat(current_rows, Y.col);
             for (int i = 0; i < current_rows; ++i) {
                 Copy_Vec(X_scaled.data.data() + (start + i) * X.col, X_mini[b].data.data() + i * X.col, X.col);
-                Copy_Vec(Y_scaled.data.data() + (start + i) * Y.col, Y_mini[b].data.data() + i * Y.col, Y.col);
+                Copy_Vec(Y.data.data() + (start + i) * Y.col, Y_mini[b].data.data() + i * Y.col, Y.col);
             }
         }
         for (int epoch = 0; epoch < epochs; ++epoch) {
@@ -2527,12 +2322,11 @@ void LinearRegression::fit(const Mat& X, const Mat& Y, float learning_rate, int 
             }
         }
     } else {
-        Train_LN(X_scaled, Y_scaled, W, B, learning_rate, epochs, history, loss_type, regularization, lambda);
+        Train_LN(X_scaled, Y, W, B, learning_rate, epochs, history, loss_type, regularization, lambda);
     }
 }
 
-void LinearRegression::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val,
-                                      float learning_rate, int epochs, Loss_History& history) {
+void LinearRegression::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val) {
     W = Mat(X.col, Y.col);
     B = Mat(1, Y.col);
     W.rand();
@@ -2540,21 +2334,9 @@ void LinearRegression::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_v
 
     Mat X_scaled = X;
     FeatureScaling(X, X_scaled, X_mean, X_std);
-
-    Mat Y_scaled = Y;
-    bool scale_y = (loss_type == "MSE" || loss_type == "MAE");
-    if (scale_y) {
-        FeatureScaling(Y, Y_scaled, Y_mean, Y_std);
-    }
-
     Mat X_val_scaled = X_val;
     if (X_mean.row == 1 && X_mean.col == X_val.col) {
         FeatureScaling(X_val, X_val_scaled, X_mean, X_std);
-    }
-
-    Mat Y_val_scaled = Y_val;
-    if (scale_y && Y_mean.row == 1 && Y_mean.col == Y_val.col) {
-        FeatureScaling(Y_val, Y_val_scaled, Y_mean, Y_std);
     }
 
     int patience = 15;
@@ -2578,7 +2360,7 @@ void LinearRegression::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_v
             Y_mini[b] = Mat(current_rows, Y.col);
             for (int i = 0; i < current_rows; ++i) {
                 Copy_Vec(X_scaled.data.data() + (start + i) * X.col, X_mini[b].data.data() + i * X.col, X.col);
-                Copy_Vec(Y_scaled.data.data() + (start + i) * Y.col, Y_mini[b].data.data() + i * Y.col, Y.col);
+                Copy_Vec(Y.data.data() + (start + i) * Y.col, Y_mini[b].data.data() + i * Y.col, Y.col);
             }
         }
     }
@@ -2589,7 +2371,7 @@ void LinearRegression::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_v
                 Train_LN(X_mini[b], Y_mini[b], W, B, learning_rate, 1, history, loss_type, regularization, lambda);
             }
         } else {
-            Train_LN(X_scaled, Y_scaled, W, B, learning_rate, 1, history, loss_type, regularization, lambda);
+            Train_LN(X_scaled, Y, W, B, learning_rate, 1, history, loss_type, regularization, lambda);
         }
 
         Mat Y_pred_val;
@@ -2618,9 +2400,6 @@ void LinearRegression::predict(const Mat& X, Mat& Y_pred) const {
     }
     mxm(X_scaled, W, Y_pred);
     Y_pred += B;
-    if (Y_mean.row == 1 && Y_mean.col == Y_pred.col) {
-        Rescale_Y(Y_pred, const_cast<Mat&>(Y_mean), const_cast<Mat&>(Y_std));
-    }
 }
 
 Mat LinearRegression::predict(const Mat& X) const {
@@ -2629,34 +2408,20 @@ Mat LinearRegression::predict(const Mat& X) const {
     return Y_pred;
 }
 
-void LinearRegression::evaluate(const Mat& Y_true, const Mat& Y_pred, float threshold) const {
-    if (loss_type == "MSE" || loss_type == "MAE") {
-        float mse = MSE(Y_true, Y_pred);
-        float mae = MAE(Y_true, Y_pred);
-        cout << "\nRoot Mean Squared Error: " << sqrtf(2 * mse) << endl;
-        cout << "Mean Absolute Error: " << mae << endl;
-    }
+void LinearRegression::evaluate(const Mat& Y_true, const Mat& Y_pred) const {
+    evaluateModel(Y_true, Y_pred, "reg");
 }
 
-float LinearRegression::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type, float threshold) const {
-    if (loss_type == "MSE") {
-        float mse = MSE(Y_true, Y_pred);
-        cout << "\nRoot Mean Squared Error: " << sqrtf(2 * mse) << endl;
-        return mse;
-    } else if (loss_type == "MAE") {
-        float mae = MAE(Y_true, Y_pred);
-        cout << "Mean Absolute Error: " << mae << endl;
-        return mae;
-    }
-    return 0.0f;
+float LinearRegression::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type) const {
+    return evaluateModel(Y_true, Y_pred, eval_type, "reg");
 }
 
-LogisticRegression::LogisticRegression(const string& loss_type, const string& regularization,
+LogisticRegression::LogisticRegression(const string& loss_type, float learning_rate, int epochs, const string& regularization,
                                        float lambda, int batch_size)
-    : loss_type(loss_type), regularization(regularization), lambda(lambda), batch_size(batch_size),
-      X_mean(1, 0), X_std(1, 0), Y_mean(1, 0), Y_std(1, 0) {}
+    : loss_type(loss_type), learning_rate(learning_rate), epochs(epochs), regularization(regularization), lambda(lambda), batch_size(batch_size),
+      X_mean(1, 0), X_std(1, 0){}
 
-void LogisticRegression::fit(const Mat& X, const Mat& Y, float learning_rate, int epochs, Loss_History& history) {
+void LogisticRegression::fit(const Mat& X, const Mat& Y) {
     W = Mat(X.col, Y.col);
     B = Mat(1, Y.col);
     W.rand();
@@ -2692,8 +2457,7 @@ void LogisticRegression::fit(const Mat& X, const Mat& Y, float learning_rate, in
     }
 }
 
-void LogisticRegression::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val,
-                                        float learning_rate, int epochs, Loss_History& history) {
+void LogisticRegression::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val) {
     W = Mat(X.col, Y.col);
     B = Mat(1, Y.col);
     W.rand();
@@ -2781,83 +2545,19 @@ Mat LogisticRegression::predict(const Mat& X) const {
     return Y_pred;
 }
 
-void LogisticRegression::evaluate(const Mat& Y_true, const Mat& Y_pred, float threshold) const {
+void LogisticRegression::evaluate(const Mat& Y_true, const Mat& Y_pred) const {
     if (loss_type == "BCE") {
-        float precision , recall , f1;
-        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
         Mat Y_hat (Y_pred.row, Y_pred.col);
-        apply(Y_pred, Y_hat, [threshold](float x) {return (x > threshold) ? 1.0f : 0.0f;});
-        
-        Mat ConfusionMat(Y_pred.col, Y_pred.col);
-        for (int i = 0; i < Y_true.row; i++) {
-            int idx_ytrue = -1, idx_yhat = -1;
-            for (int j = 0; j < Y_true.col; j++) {
-                if (Y_true(i, j)) idx_ytrue = j;
-                if (Y_hat(i, j)) idx_yhat = j;
-                if (idx_yhat != -1 && idx_ytrue != -1) break;
-            }
-            ConfusionMat(idx_ytrue, idx_yhat)++;
-        }
-        
-        int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
-        Mat soc (1, ConfusionMat.row); Sum_Cols(ConfusionMat, soc);
-        Mat sor (1, ConfusionMat.col); Sum_Rows(ConfusionMat, sor);
-        
-        for (int i = 0; i < ConfusionMat.row; i++) {
-            int tp = (int)ConfusionMat(i, i);
-            int fp = sor.data[i] - tp;
-            int fn = soc.data[i] - tp;
-            precision = Precision(tp, fp); macro_precision += precision;
-            recall = Recall(tp, fn); macro_recall += recall;
-            f1 = F1_Score(precision, recall); macro_f1 += f1;
-        }
-        cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl;
-        cout << "Macro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
-        cout << "Macro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
+        apply(Y_pred, Y_hat, [this](float x) {return (x > threshold) ? 1.0f : 0.0f;});
+        evaluateModel(Y_true, Y_hat, "clf");
     }
 }
 
-float LogisticRegression::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type, float threshold) const {
+float LogisticRegression::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type) const {
     if (loss_type == "BCE") {
-        float precision , recall , f1;
-        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
         Mat Y_hat (Y_pred.row, Y_pred.col);
-        apply(Y_pred, Y_hat, [threshold](float x) {return (x > threshold) ? 1.0f : 0.0f;});
-        
-        Mat ConfusionMat(Y_pred.col, Y_pred.col);
-        for (int i = 0; i < Y_true.row; i++) {
-            int idx_ytrue = -1, idx_yhat = -1;
-            for (int j = 0; j < Y_true.col; j++) {
-                if (Y_true(i, j)) idx_ytrue = j;
-                if (Y_hat(i, j)) idx_yhat = j;
-                if (idx_yhat != -1 && idx_ytrue != -1) break;
-            }
-            ConfusionMat(idx_ytrue, idx_yhat)++;
-        }
-        
-        int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
-        Mat soc (1, ConfusionMat.row); Sum_Cols(ConfusionMat, soc);
-        Mat sor (1, ConfusionMat.col); Sum_Rows(ConfusionMat, sor);
-        
-        for (int i = 0; i < ConfusionMat.row; i++) {
-            int tp = (int)ConfusionMat(i, i);
-            int fp = sor.data[i] - tp;
-            int fn = soc.data[i] - tp;
-            precision = Precision(tp, fp); macro_precision += precision;
-            recall = Recall(tp, fn); macro_recall += recall;
-            f1 = F1_Score(precision, recall); macro_f1 += f1;
-        }
-        
-        if (eval_type == "precision") {
-            cout << "\nMacro Precision: " << (float)macro_precision / ConfusionMat.row << endl;
-            return (float)macro_precision / ConfusionMat.row;
-        } else if (eval_type == "recall") {
-            cout << "\nMacro Recall: " << (float)macro_recall / ConfusionMat.row << endl;
-            return (float)macro_recall / ConfusionMat.row;
-        } else if (eval_type == "f1_score") {
-            cout << "\nMacro F1-Score: " << (float)macro_f1 / ConfusionMat.row << endl;
-            return (float)macro_f1 / ConfusionMat.row;
-        }
+        apply(Y_pred, Y_hat, [this](float x) {return (x > threshold) ? 1.0f : 0.0f;});
+        return evaluateModel(Y_true, Y_hat, "clf", eval_type);
     }
     return 0.0f;
 }

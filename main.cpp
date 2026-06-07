@@ -43,6 +43,6 @@ int main(){
     Mat Y_Pred = model.predict(X_Test);
     model.evaluate(Y_Test, Y_Pred);
     // ShowPredict(Y_Pred, Y_Test, "reg");
+    // model.feature_importance(X_Test,Y_Test);
     PrintTimer();
-    Y_Pred.savetxt("Dataset/house_pred.txt");
 }
