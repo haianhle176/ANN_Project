@@ -1065,6 +1065,24 @@ float F1_Score(float precision, float recall){
     if (precision + recall == 0) return 0.0f;
     else return 2 * precision * recall / (precision + recall);
 }
+int Majority_Index(const vector<float>& dst, vector <int>& count, const vector <int>& indices){
+    for (int i = 0;i < count.size();i++) count[i] = 0;
+    if (indices.empty()){
+        for (int i = 0;i<dst.size();i++){
+            count[dst[i]]++;
+        }
+    }
+    else{
+        for (int i : indices){
+            count[dst[i]]++;
+        }
+    }
+    int majority_class = 0;
+    for (size_t i = 1; i < count.size(); i++) {
+        if (count[i] > count[majority_class]) majority_class = i;
+    }
+    return majority_class;
+}
 float MSE(const Mat& Y, const Mat& Z) {
     return dist(Y.data.data(), Z.data.data(), Y.size()) / (2 * Y.row);
 }
@@ -1987,13 +2005,8 @@ void DecisionTree::find_best_split_reg(const Mat& X, const Mat& Y, vector<int>& 
 }
 float DecisionTree:: get_majority(const Mat& Y){
     if (type == "clf"){
-        vector<int> count(num_class,0);
-        for (int i = 0; i < Y.row; i++) count[(int)Y(i,0)]++;
-        int majority_class = 0;
-        for (size_t i = 1; i < count.size(); i++) {
-            if (count[i] > count[majority_class]) majority_class = i;
-        }
-        return (float)majority_class;
+        static vector<int> count(num_class);
+        return Majority_Index(Y.data, count);
     }
     else {
         return mean(Y.data.data(),Y.size());
@@ -2001,13 +2014,8 @@ float DecisionTree:: get_majority(const Mat& Y){
 }
 float DecisionTree:: get_majority(const Mat& Y, vector <int>& sample_indices){
 if (type == "clf"){
-        vector<int> count(num_class, 0);
-        for (int idx : sample_indices) count[(int)Y(idx, 0)]++;
-        int majority_class = 0;
-        for (size_t i = 1; i < count.size(); i++) {
-            if (count[i] > count[majority_class]) majority_class = i;
-        }
-        return (float)majority_class;
+        static vector<int> count(num_class);
+        return Majority_Index(Y.data, count, sample_indices);
     }
     else {
         float sum = 0.0f;
@@ -2101,6 +2109,12 @@ Mat DecisionTree::predict(const Mat& X) const{
     }
     return Y_pred;
 }
+void DecisionTree:: predict(const Mat& X, Mat& Y_pred) const{
+    for (int i = 0; i < X.row; i++) {
+        Y_pred(i, 0) = predict_single(X.data.data() + i * X.col, root);
+    }
+}
+
 float DecisionTree:: predict(const float* X) const{
     return predict_single(X, root);
 }
@@ -2182,7 +2196,7 @@ float RandomForest::predict_single(const float* X) const{
         }
         return sum / num_trees;
     } else {
-        std::vector<int> votes(num_classes, 0);
+        static vector<int> votes(num_classes);
         for (int i = 0; i < num_trees; i++) {
             int predicted_label = (int)forest[i].predict(X);
             votes[predicted_label]++;
@@ -2198,6 +2212,13 @@ Mat RandomForest:: predict(const Mat& X) const{
         Y_Pred(i,0) = predict_single(X.data.data() + i * X.col);
     }
     return Y_Pred;
+}
+void RandomForest:: predict(const Mat& X, Mat& Y_pred) const{
+    // Bạn cũng có thể song song hóa bước Inference này nếu tập Test có hàng triệu dòng
+    #pragma omp parallel for
+    for (int i = 0; i < X.row; i++) {
+        Y_pred(i,0) = predict_single(X.data.data() + i * X.col);
+    }
 }
 void RandomForest::fit(const Mat& X, const Mat& Y){
     if (type == "clf") num_features_split = std::max(1, (int)std::sqrt(X.col));

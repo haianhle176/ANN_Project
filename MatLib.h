@@ -112,6 +112,8 @@ class DecisionTree : public Model {
         TreeNode* root;
         float epsilon, min_impurity_decrease;
         int num_class;
+        vector<int> sample_indices;
+        vector<int> feature_indices;
         float gini_cal(const Mat&Y);
         float varience_cal(const Mat&Y);
         float gini_cal(const Mat&Y, vector <int>& sample_indices);
@@ -134,6 +136,7 @@ class DecisionTree : public Model {
          epsilon(1e-3), min_impurity_decrease(1e-4), num_class(num_class){}
         void fit(const Mat& X, const Mat& Y) override ;
         Mat predict(const Mat& X) const override;
+        void predict(const Mat& X, Mat& Y_pred) const;
         float predict(const float* X) const;
         void evaluate(const Mat& Y_true, const Mat& Y_pred) const;
         float evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type) const override;
@@ -157,6 +160,7 @@ class RandomForest : public Model{
         :type(type), num_trees(num_trees), max_depth(max_depth), min_samples_split(min_samples_split){}
         void fit(const Mat& X, const Mat& Y) override;
         Mat predict(const Mat& X) const override;
+        void predict(const Mat& X, Mat& Y_pred) const;
         float predict_single(const float* X) const;
         void evaluate(const Mat& Y_true, const Mat& Y_pred) const;
         float evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type) const override;
@@ -430,6 +434,7 @@ void shuffleMatrixColumn(Mat& X, int colIndex, std::mt19937& gen);
 float Precision(float TP, float FP);
 float Recall(float TP, float FN);
 float F1_Score(float precision, float recall);
+int Majority_Index(const vector<float>& dst,vector <int>& count, const vector <int>& indices = {});
 
 
 void Train_LN(const Mat& X, const Mat& Y, Mat& W, Mat& B, float learning_rate, int epochs, Loss_History& history, string loss_type,

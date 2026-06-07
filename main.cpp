@@ -33,7 +33,7 @@ int main(){
     Y.loadmat("Dataset2/Y_Train_House.txt");
     X_Test.loadmat("Dataset2/X_Test_House.txt");
     Y_Test.loadmat("Dataset2/Y_Test_House.txt");
-    auto model = RandomForest("reg", 80, 20);
+    auto model = DecisionTree("reg",10,3);
 
     StartTimer();
     model.fit(X, Y);
