@@ -339,7 +339,7 @@ void Loss_History::print(){
 	}
 	cout<<"\nLoss final: "<<Loss[Loss.size() - 1] << " end at "<<Loss.size() <<" epoch\n";
 }
-void Loss_History::print_final(){if (Loss.size()==0) return; cout<<"\nLoss final: "<<Loss[Loss.size() - 1] << " end at "<<Loss.size() <<" epoch\n";}
+void Loss_History::print_final(){if (Loss.size()==0) {cout <<"Loss history empty!";return;} cout<<"\nLoss final: "<<Loss[Loss.size() - 1] << " end at "<<Loss.size() <<" epoch\n";}
 void Init_Node(vector<Mat>& W, vector<Mat>& B, vector <int> hidden_nodes, int input_dim, int output_dim){
     for (int i = 0; i < W.size(); i++) {
         if (i == 0) {
@@ -420,7 +420,6 @@ void mxm(const Mat& src1, const Mat& src2, Mat& dst) {
 
     // Mốc chia hết cho 32 để xử lý 4 thanh ghi AVX cùng lúc (4 x 8 float)
     int M32 = (dst.col / 32) * 32;
-
     for (int i = 0; i < src1.row; i++) {
         
         // 1. Quét phần lõi ma trận (nhảy mỗi bước 32 cột)
@@ -478,7 +477,6 @@ void mtxm(const Mat& src1, const Mat& src2, Mat& dst) {
     const float* __restrict pA = src1.data.data();
     const float* __restrict pB = src2.data.data();
     float* __restrict pC = dst.data.data();
-
     // Vòng lặp ngoài cùng chạy thẳng theo số hàng của ma trận đích C (k)
     for (int k = 0; k < dst.row; k++) {
         
@@ -919,20 +917,30 @@ vector<int> indices_shuffle(int size, std::mt19937& gen){
     std::shuffle(indices.begin(), indices.end(), gen);
     return indices;
 }
-float evaluateModel(const Mat& Y_true, const Mat& Y_pred, string eval_type, string type){
+float evaluateModel(const Mat& Y_true, const Mat& Y_pred, string eval_type, string type, int num_classes){
     if (type == "clf"){
-    float precision , recall , f1;
-    float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
-    Mat ConfusionMat(Y_pred.col, Y_pred.col);
-    for (int i = 0;i < Y_true.row;i++){
-        int idx_ytrue = -1, idx_yhat = -1;
-        for (int j = 0;j < Y_true.col; j++){
-            if (Y_true(i,j)) idx_ytrue = j;
-            if (Y_pred(i,j)) idx_yhat = j;
-            if (idx_yhat != -1 && idx_ytrue != -1) break;
-        }
-        ConfusionMat(idx_ytrue , idx_yhat)++;
-    }
+        float precision , recall , f1;
+        float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
+        int num_cl = num_classes > 0 ? num_classes : Y_pred.col;
+        Mat ConfusionMat(num_cl, num_cl);
+        for (int i = 0; i < Y_true.row; i++){
+            int idx_ytrue, idx_yhat;
+            if (Y_true.col == 1) {
+                idx_ytrue = (int)std::round(Y_true(i, 0));
+                idx_yhat  = (int)std::round(Y_pred(i, 0));
+            }
+            else {
+                idx_ytrue = -1; idx_yhat = -1;
+                for (int j = 0; j < Y_true.col; j++)
+                    if (Y_true(i, j)) { idx_ytrue = j; break; }
+                if (Y_pred.col == 1)
+                    idx_yhat = (int)std::round(Y_pred(i, 0));
+                else
+                    for (int j = 0; j < Y_pred.col; j++)
+                        if (Y_pred(i, j)) { idx_yhat = j; break; }
+            }
+            ConfusionMat(idx_ytrue, idx_yhat)++;
+        }   
         int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
         Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
         Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
@@ -968,20 +976,30 @@ float evaluateModel(const Mat& Y_true, const Mat& Y_pred, string eval_type, stri
     }
     return 0.0f;
 }
-void evaluateModel(const Mat& Y_true, const Mat& Y_pred, string type){
-        if (type == "clf"){
+void evaluateModel(const Mat& Y_true, const Mat& Y_pred, string type, int num_classes){
+    if (type == "clf"){
         float precision , recall , f1;
         float macro_precision = 0, macro_recall = 0, macro_f1 = 0;
-        Mat ConfusionMat(Y_pred.col, Y_pred.col);
-        for (int i = 0;i < Y_true.row;i++){
-            int idx_ytrue = -1, idx_yhat = -1;
-            for (int j = 0;j < Y_true.col; j++){
-                if (Y_true(i,j)) idx_ytrue = j;
-                if (Y_pred(i,j)) idx_yhat = j;
-                if (idx_yhat != -1 && idx_ytrue != -1) break;
+        int num_cl = num_classes > 0 ? num_classes : Y_pred.col;
+        Mat ConfusionMat(num_cl, num_cl);
+        for (int i = 0; i < Y_true.row; i++){
+            int idx_ytrue, idx_yhat;
+            if (Y_true.col == 1) {
+                idx_ytrue = (int)std::round(Y_true(i, 0));
+                idx_yhat  = (int)std::round(Y_pred(i, 0));
             }
-            ConfusionMat(idx_ytrue , idx_yhat)++;
-        }
+            else {
+                idx_ytrue = -1; idx_yhat = -1;
+                for (int j = 0; j < Y_true.col; j++)
+                    if (Y_true(i, j)) { idx_ytrue = j; break; }
+                if (Y_pred.col == 1)
+                    idx_yhat = (int)std::round(Y_pred(i, 0));
+                else
+                    for (int j = 0; j < Y_pred.col; j++)
+                        if (Y_pred(i, j)) { idx_yhat = j; break; }
+            }
+            ConfusionMat(idx_ytrue, idx_yhat)++;
+        }   
         int total_sum = sum_elements(ConfusionMat.data.data(), ConfusionMat.size());
         Mat soc (1, ConfusionMat.row);Sum_Cols(ConfusionMat,soc);
         Mat sor (1, ConfusionMat.col);Sum_Rows(ConfusionMat,sor);
@@ -1065,10 +1083,10 @@ float F1_Score(float precision, float recall){
     if (precision + recall == 0) return 0.0f;
     else return 2 * precision * recall / (precision + recall);
 }
-int Majority_Index(const vector<float>& dst, vector <int>& count, const vector <int>& indices){
+int Majority_Index(const float* dst, vector <int>& count, const vector <int>& indices){
     for (int i = 0;i < count.size();i++) count[i] = 0;
     if (indices.empty()){
-        for (int i = 0;i<dst.size();i++){
+        for (int i = 0;i< count.size();i++){
             count[dst[i]]++;
         }
     }
@@ -1707,7 +1725,7 @@ void MLP::k_fold(const Mat& X, const Mat& Y, int K, string eval_type, bool shuff
     K_Fold_Evaluate(this, X, Y, K, shuffle, type,  eval_type);
 }
 
-MLP::MLP(const vector<int>& hidden_nodes, const string& loss_type, float learning_rate, int epoch,
+MLP::MLP(const vector<int>& hidden_nodes, const string& loss_type, float learning_rate, int epochs,
      float pkeep, int batch_size, const string& regularization, float lambda)
     : hidden_nodes(hidden_nodes), loss_type(loss_type), learning_rate(learning_rate), epochs(epochs),
       regularization(regularization),
@@ -1771,6 +1789,7 @@ void MLP::fit(const Mat& X, const Mat& Y) {
         Train_MLP(X_scaled, Y_scaled, W, B, hidden_nodes, learning_rate, epochs, history,
                   loss_type, regularization, lambda);
     }
+    Rescale_Weight(W[0] ,B[0], X_mean, X_std);
 }
 
 void MLP::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val) {
@@ -1788,9 +1807,6 @@ void MLP::fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat
 
 void MLP::predict(const Mat& X, Mat& Y_pred) const {
     Mat X_scaled = X;
-    if (X_mean.row == 1 && X_mean.col == X.col) {
-        FeatureScaling(X, X_scaled, const_cast<Mat&>(X_mean), const_cast<Mat&>(X_std));
-    }
     MLP_Test(X_scaled, W, B, Y_pred, loss_type, const_cast<Mat&>(Y_mean), const_cast<Mat&>(Y_std));
 }
 
@@ -1973,7 +1989,7 @@ void DecisionTree::find_best_split_reg(const Mat& X, const Mat& Y, vector<int>& 
 float DecisionTree:: get_majority(const Mat& Y, vector <int>& sample_indices){
 if (type == "clf"){
         static vector<int> count(num_class);
-        return Majority_Index(Y.data, count, sample_indices);
+        return Majority_Index(Y.data.data(), count, sample_indices);
     }
     else {
         float sum = 0.0f;
@@ -1997,7 +2013,7 @@ void DecisionTree::fit(const Mat& X, const Mat& Y){
     for (int i = 0; i < Y.row; i++) first_sample_indices[i] = i;
     vector<int> first_feature_indices(X.col);
     for (int i = 0; i < X.col; i++) first_feature_indices[i] = i;
-    if (Y.col > 1) {
+    if (Y.col > 1 && type == "clf") {
         num_class = Y.col;
         Mat Y_idx(Y.row, 1);
         for (int i = 0;i < Y.row; i++){
@@ -2016,7 +2032,7 @@ void DecisionTree::fit(const Mat& X, const Mat& Y){
     }
 }
 void DecisionTree::fit(const Mat& X, const Mat& Y, vector<int>& sample_indices, vector<int>& feature_indices) {
-        if (Y.col > 1) {
+        if (Y.col > 1 && type == "clf") {
         num_class = Y.col;
         Mat Y_idx(Y.row, 1);
         for (int i = 0;i < Y.row; i++){
@@ -2051,10 +2067,10 @@ float DecisionTree:: predict(const float* X) const{
     return predict_single(X, root);
 }
 float DecisionTree::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type) const {
-    return evaluateModel(Y_true, Y_pred, type, eval_type);
+    return evaluateModel(Y_true, Y_pred, type, eval_type, num_class);
 }
 void DecisionTree::evaluate(const Mat& Y_true, const Mat& Y_pred) const {
-    evaluateModel(Y_true, Y_pred, type);
+    evaluateModel(Y_true, Y_pred, type, num_class);
 }
 void DecisionTree::k_fold(const Mat& X, const Mat& Y, int K, string eval_type, bool shuffle){
     K_Fold_Evaluate(this, X, Y, K, shuffle, type, eval_type);
@@ -2125,7 +2141,7 @@ float RandomForest::predict_single(const float* X) const{
         }
         return sum / num_trees;
     } else {
-        static vector<int> votes(num_classes);
+        vector<int> votes(num_classes, 0);
         for (int i = 0; i < num_trees; i++) {
             int predicted_label = (int)forest[i].predict(X);
             votes[predicted_label]++;
@@ -2150,10 +2166,10 @@ void RandomForest:: predict(const Mat& X, Mat& Y_pred) const{
     }
 }
 void RandomForest::fit(const Mat& X, const Mat& Y){
-    if (type == "clf") num_features_split = std::max(1, (int)std::sqrt(X.col));
-    else if (type == "reg") num_features_split = std::max(1, X.col / 3);
+    if (type == "reg") {num_features_split = std::max(1, X.col / 3);num_classes = 1;}
+    else if (type == "clf") {num_features_split = std::max(1, (int)std::sqrt(X.col));
     if (Y.col > 1) num_classes = Y.col;
-    else num_classes = (int)*std::max_element(Y.data.begin(), Y.data.end()) + 1;
+    else num_classes = (int)*std::max_element(Y.data.begin(), Y.data.end()) + 1;}
     forest.resize(num_trees, DecisionTree(type, max_depth, min_samples_split, num_classes));
     if (Y.col > 1) {
         Mat Y_idx(Y.row, 1);
@@ -2193,16 +2209,16 @@ void RandomForest::fit(const Mat& X, const Mat& Y){
     }
 }
 void RandomForest::evaluate(const Mat& Y_true, const Mat& Y_pred) const{
-    evaluateModel(Y_true, Y_pred, type);
+    evaluateModel(Y_true, Y_pred, type, num_classes);
 }
 float RandomForest::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type) const {
-    return evaluateModel(Y_true, Y_pred, eval_type, type);
+    return evaluateModel(Y_true, Y_pred, eval_type, type, num_classes);
 }
 void RandomForest::k_fold(const Mat& X, const Mat& Y, int K, string eval_type, bool shuffle){
-    if (type == "clf") num_features_split = std::max(1, (int)std::sqrt(X.col));
-    else if (type == "reg") num_features_split = std::max(1, X.col / 3);
+    if (type == "reg") {num_features_split = std::max(1, X.col / 3);num_classes = 1;}
+    else if (type == "clf") {num_features_split = std::max(1, (int)std::sqrt(X.col));
     if (Y.col > 1) num_classes = Y.col;
-    else num_classes = (int)*std::max_element(Y.data.begin(), Y.data.end()) + 1;
+    else num_classes = (int)*std::max_element(Y.data.begin(), Y.data.end()) + 1;}
     forest.resize(num_trees, DecisionTree(type, max_depth, min_samples_split, num_classes));
     K_Fold_Evaluate(this, X, Y, K, shuffle, type, eval_type);
 }
@@ -2237,8 +2253,8 @@ void RandomForest::feature_importance(Mat& X, const Mat& Y_true){
     cout << "Most important feature is feature " << best_idx + 1 << " with score gap = " << fixed << setprecision(5) << best_val << endl;
     cout << "Least important feature is feature " << worst_idx + 1 << " with score gap = " << fixed << setprecision(5) << worst_val << endl; 
 }
-LinearRegression::LinearRegression(const string& loss_type,float learning_rate, int epochs, const string& regularization,
-                                   float lambda, int batch_size)
+LinearRegression::LinearRegression(const string& loss_type,float learning_rate, int epochs,int batch_size, const string& regularization,
+                                   float lambda)
     : loss_type(loss_type), learning_rate(learning_rate), epochs(epochs), regularization(regularization), lambda(lambda), batch_size(batch_size),
       X_mean(1, 0), X_std(1, 0) {}
 
@@ -2247,7 +2263,8 @@ void LinearRegression::fit(const Mat& X, const Mat& Y) {
     B = Mat(1, Y.col);
     W.rand();
     B.rand();
-
+    X_mean = Mat(1, X.col);
+    X_std = Mat(1, X.col);
     Mat X_scaled = X;
     FeatureScaling(X, X_scaled, X_mean, X_std);
 
@@ -2376,7 +2393,8 @@ void LogisticRegression::fit(const Mat& X, const Mat& Y) {
     B = Mat(1, Y.col);
     W.rand();
     B.rand();
-
+    X_mean = Mat(1, X.col);
+    X_std = Mat(1, X.col);
     Mat X_scaled = X;
     FeatureScaling(X, X_scaled, X_mean, X_std);
 
@@ -2510,4 +2528,81 @@ float LogisticRegression::evaluate(const Mat& Y_true, const Mat& Y_pred, string 
         return evaluateModel(Y_true, Y_hat, "clf", eval_type);
     }
     return 0.0f;
+}
+
+void KNN:: fit(const Mat& X, const Mat& Y) {
+    X_train = Mat(X.row, X.col);
+    X_mean = Mat(1, X.col);
+    X_std = Mat(1, X.col);
+    FeatureScaling(X, X_train, X_mean, X_std);
+    if (type == "reg"){
+        num_classes = 1;
+        Y_train = Y; 
+        return;
+    }
+    if (Y.col > 1 && type == "clf") {
+        Mat Y_idx(Y.row, 1);
+        num_classes = Y.col;
+        for (int i = 0;i < Y.row; i++){
+            for (int j = 0; j < Y.col; j++) {
+                if (Y(i,j) == 1.0f) {
+                    Y_idx(i,0) = (float)j;
+                    break;
+                }
+            }
+        }
+        Y_train = Y_idx;
+    }
+    else {
+        num_classes = (int)*std::max_element(Y.data.begin(), Y.data.end()) + 1;
+        Y_train = Y;
+    }
+}
+Mat KNN:: predict(const Mat& X) const {
+    Mat Y_pred (X.row, 1);
+    Mat X_scaled = X;
+    FeatureScaling(X, X_scaled, const_cast<Mat&> (X_mean), const_cast<Mat&> (X_std), false);
+    vector <pair<float, float>> distance(X_train.row);
+    if (type == "clf"){
+        for (int i = 0;i < X.row;i++){
+            vector <int> count (num_classes, 0);
+            for (int j = 0; j < X_train.row; j++) {
+                distance[j].first = dist(X_scaled.data.data() + i * X_scaled.col, X_train.data.data() + j * X_train.col, X_scaled.col);
+                distance[j].second = Y_train(j,0);
+            }
+            std::nth_element(distance.begin(), distance.begin() + K, distance.end(),
+                        [](const pair<float, float>& a, const pair<float, float>& b) {
+                            return a.first < b.first; 
+                        });
+            for (int k = 0; k < K;k++){
+                count[distance[k].second]++;
+            }
+            auto max_it = std::max_element(count.begin(), count.end());
+            int best_label = std::distance(count.begin(), max_it);
+            Y_pred(i, 0) = (float)best_label;
+        }
+    }
+    else if (type == "reg"){
+        for (int i = 0;i < X.row;i++){
+            double sum = 0;
+            for (int j = 0; j < X_train.row; j++) {
+                distance[j].first = dist(X_scaled.data.data() + i * X_scaled.col, X_train.data.data() + j * X_train.col, X_scaled.col);
+                distance[j].second = Y_train(j,0);
+            }
+            std::nth_element(distance.begin(), distance.begin() + K, distance.end(),
+                        [](const pair<float, float>& a, const pair<float, float>& b) {
+                            return a.first < b.first; 
+                        });
+            for (int k = 0; k < K; k++) sum += distance[k].second;
+            sum/=K;
+            Y_pred(i, 0) = sum;
+        }
+    }
+    return Y_pred;
+}
+void KNN::evaluate(const Mat& Y_true, const Mat& Y_pred) const {
+    evaluateModel(Y_true, Y_pred, type, num_classes);
+}
+float KNN::evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type) const {
+    return evaluateModel(Y_true, Y_pred, eval_type, type, num_classes);
 }

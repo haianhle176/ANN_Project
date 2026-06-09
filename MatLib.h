@@ -172,8 +172,8 @@ private:
     int epochs;
 public:
     Loss_History history;
-    LinearRegression(const string& loss_type = "MSE", float learning_rate = 0.01f, int epochs = 1000, const string& regularization = "",
-                     float lambda = 0.0f, int batch_size = 0);
+    LinearRegression(const string& loss_type = "MSE", float learning_rate = 0.01f, int epochs = 1000, int batch_size = 0, const string& regularization = "",
+                     float lambda = 0.0f);
 
     void fit(const Mat& X, const Mat& Y) override;
     void fit_with_valid(const Mat& X, const Mat& Y, const Mat& X_val, const Mat& Y_val);
@@ -208,6 +208,21 @@ public:
     float evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type) const override;
 };
 
+class KNN : public Model{
+private:
+    Mat X_train;
+    Mat X_mean, X_std;
+    Mat Y_train;
+    string type;
+    int K;
+    int num_classes;
+public:
+    KNN(string type, int K):type(type), K(K % 2 ? K : K + 1){}
+    void fit(const Mat& X, const Mat& Y) override;
+    Mat predict(const Mat& X) const override;
+    void evaluate(const Mat& Y_true, const Mat& Y_pred) const;
+    float evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type) const override;
+};
 
 void mxm(const Mat& src1, const Mat& src2, Mat& dst);
 void mxm_block_tilt(const Mat& src1, const Mat& src2, Mat& dst);
@@ -274,8 +289,8 @@ void Sum_Rows(const Mat& src, Mat& dst);
 void Sum_Cols(const Mat& src, Mat& dst);
 inline void Copy_Vec(const float* src, float* dst,int n) {std::copy(src, src + n, dst);}
 vector<int> indices_shuffle(int size, std::mt19937& gen);
-float evaluateModel(const Mat& Y_true, const Mat& Y_pred, string eval_type, string type);
-void evaluateModel(const Mat& Y_true, const Mat& Y_pred, string type);
+float evaluateModel(const Mat& Y_true, const Mat& Y_pred, string eval_type, string type, int num_classes = -1);
+void evaluateModel(const Mat& Y_true, const Mat& Y_pred, string type, int num_classes = -1);
 void K_Fold_Evaluate(Model* ML,const Mat& X, const Mat& Y, int K, bool shuffle, string type, string eval_type);
 
 float MSE(const Mat& Y, const Mat& Z);
@@ -285,9 +300,9 @@ float CCE(const Mat& Y, const Mat& P);
 float MSE(const Mat& Y, const Mat& Z, string regularization, float lambda, const Mat& W);
 float MAE(const Mat& Y, const Mat& Z, string regularization, float lambda, const Mat& W);
 float BCE(const Mat& Y, const Mat& P, string regularization, float lambda, const Mat& W);
+float CCE(const Mat& Y, const Mat& P, string regularization, float lambda, const Mat& W);
 float Loss_Cal(const Mat& Y, const Mat& Y_hat, string loss_type);
 
-float CCE(const Mat& Y, const Mat& P, string regularization, float lambda, const Mat& W);
 void FeatureScaling(const Mat& src, Mat& dst, Mat& mean_mat, Mat& std_mat, bool fit = true);
 void Rescale_Weight(Mat& W, Mat& B, Mat& mean_mat, Mat& inv_std_mat);
 void Rescale_Y(Mat& Y_Pred, Mat& Y_mean, Mat& Y_inv_std);
@@ -426,7 +441,7 @@ void shuffleMatrixColumn(Mat& X, int colIndex, std::mt19937& gen);
 float Precision(float TP, float FP);
 float Recall(float TP, float FN);
 float F1_Score(float precision, float recall);
-int Majority_Index(const vector<float>& dst,vector <int>& count, const vector <int>& indices = {});
+int Majority_Index(const float* dst, vector <int>& count, const vector <int>& indices = {});
 
 
 void Train_LN(const Mat& X, const Mat& Y, Mat& W, Mat& B, float learning_rate, int epochs, Loss_History& history, string loss_type,
