@@ -1198,7 +1198,8 @@ float VIF_Cal(const float* X_true,const float *X_pred ,float X_mean,int n){
 }
 void VIF(const Mat& X, Mat& VIF_mat){
     StandardScaler S;
-    Mat X_scaled = S.fit_transform(X);
+    Mat X_scaled = X;
+    S.fit_transform(X_scaled);
     Mat X_Mask(X.row, X.col - 1);
     Mat X_Vector(X.row, 1);
     Mat W(X.col - 1, 1);
@@ -2543,42 +2544,13 @@ void StandardScaler :: fit_transform(Mat& X){
     X -= Mean;
     Hadamard_Broadcast_Row(X, inv_Std, X);
 }
-Mat StandardScaler :: fit_transform(const Mat& X){
-    Mat X_Temp(X.col, X.row);
-    Mat temp(1,X.col);
-    Mean = temp; Std = temp; inv_Std = temp;
-    X.transpose(X_Temp);
-    Mat mean_temp(1, X.col);
-    for (int i = 0; i < X_Temp.row; i++) {
-            Mean(0, i) = mean(&X_Temp(i, 0), X_Temp.col);
-            mean_temp.set_ones(Mean(0, i));
-            Std(0, i) = sqrt(var(&X_Temp(i, 0), &mean_temp(0, 0), X_Temp.col));
-            inv_Std(0, i) = 1.0f / (Std(0, i) + 1e-8f);
-        }
-    X_Temp.transpose();
-    X_Temp -= Mean;
-    Hadamard_Broadcast_Row(X_Temp, inv_Std, X_Temp);
-    return X_Temp;
-}
 void StandardScaler:: transform(Mat& X) const{
     X -= Mean;
     Hadamard_Broadcast_Row(X, inv_Std, X);
 }
-Mat StandardScaler:: transform(const Mat& X) const{
-    Mat X_Temp = X;
-    X_Temp -= Mean;
-    Hadamard_Broadcast_Row(X_Temp, inv_Std, X_Temp);
-    return X_Temp;
-}
 void StandardScaler::inverse_transform(Mat& X) const{
     Hadamard_Broadcast_Row(X, Std, X);
     X+=Mean;
-}
-Mat StandardScaler::inverse_transform(const Mat& X) const {
-    Mat X_temp = X;
-    Hadamard_Broadcast_Row(X_temp, Std, X_temp);
-    X_temp+=Mean;
-    return X_temp;
 }
 void StandardScaler::weight_inverse_transform(Mat& W, Mat& B) {
     W.transpose();
@@ -2590,4 +2562,57 @@ void StandardScaler::weight_inverse_transform(Mat& W, Mat& B) {
     Hadamard_Broadcast_Row(W, inv_Std, W);
     W.transpose();
     B -= Temp;
+}
+void KMeans:: initial_centers(const Mat& X){
+    int first = (int)RandUni(0, X.row - 1);
+    Copy_Vec(&X(first,0), &Center(0,0), X.col);
+    for (int i = 1; i < K; i++){
+        vector<float> dist_min(X.row, 1e9f);
+        for (int j = 0; j < X.row; j++){
+            for (int c = 0; c < i; c++){
+                float d = dist(&X(j,0), &Center(c, 0), X.col);
+                dist_min[j] = min(dist_min[j], d);
+            }
+        }
+        auto it = std :: max_element(dist_min.begin(), dist_min.end());
+        int best = std::distance(dist_min.begin(), it);
+        Copy_Vec(&X(best,0), &Center(i,0), X.col);
+    }
+}
+void KMeans:: fit(const Mat& X) {
+    Center = Mat(K, X.col);
+    Label = Mat(X.row, 1);
+    Mat Prev_Label = Label;
+    Mat Temp_Center = Center;
+    Mat X_scaled = X;
+    S.fit_transform(X_scaled);
+    initial_centers(X_scaled);
+    vector <pair<float, float>> distance(K);
+    vector <int> cnt (K, 0);
+    int epo = 0;
+    while(epo++ < max_epoch){
+        for (int i = 0;i < K;i++) distance[i].second = i;
+        for (int i = 0;i < X.row;i++){
+            for (int j = 0; j < K; j++) {
+                distance[j].first = dist(X_scaled.data.data() + i * X_scaled.col, Center.data.data() + j * Center.col, X_scaled.col);
+            }
+            auto it = std::min_element(distance.begin(), distance.end(), [](const pair<float, float>& a, const pair<float, float>& b) {return a.first < b.first;});
+            Label(i, 0) = std::distance(distance.begin(), it);
+        }
+        if (Prev_Label.data == Label.data) break;
+        for (int i = 0; i < X.row; i++){
+            vector_add(&X(i,0), &Temp_Center(Label(i,0),0), &Temp_Center(Label(i,0),0), X.col);
+            cnt[Label(i, 0)]++;
+        }
+        for (int i = 0;i < K;i++)
+            for (int j = 0;j < X.col;j++) Temp_Center(i, j)/= cnt[i];
+        Center = Temp_Center;
+        Prev_Label = Label;
+    }
+}
+Mat KMeans::predict() const {return Label;}
+Mat KMeans::center()  {
+    Mat ct = Center;
+    S.inverse_transform(ct);
+    return ct;
 }

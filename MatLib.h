@@ -70,9 +70,6 @@ class StandardScaler{
     void fit_transform(Mat& X);
     void transform(Mat& X) const;
     void inverse_transform(Mat& X) const;
-    Mat fit_transform(const Mat& X);
-    Mat transform(const Mat& X) const;
-    Mat inverse_transform(const Mat& X) const;
     void weight_inverse_transform(Mat& W, Mat& B) ;
 };
 class SV_Model{
@@ -86,7 +83,7 @@ class USV_Model{
     public:
     virtual ~USV_Model() = default;
     virtual void fit(const Mat& X) = 0;
-    virtual Mat predict(const Mat& X) const = 0;     
+    virtual Mat predict() const = 0;     
 };
 class MLP : public SV_Model {
 private: 
@@ -237,12 +234,18 @@ public:
     void evaluate(const Mat& Y_true, const Mat& Y_pred) const;
     float evaluate(const Mat& Y_true, const Mat& Y_pred, string eval_type) const override;
 };
-class KMean : public USV_Model{
+class KMeans : public USV_Model{
     private:
     Mat Label;
     Mat Center;
-    int K;
-    void initial_labels(); 
+    int K, max_epoch;
+    StandardScaler S;
+    void initial_centers(const Mat& X);
+    public:
+    KMeans (int K, int max_epoch = 300):K(K), max_epoch(max_epoch){}
+    void fit(const Mat& X) override;
+    Mat predict() const override;
+    Mat center();      
 };
 void mxm(const Mat& src1, const Mat& src2, Mat& dst);
 void mxm_block_tilt(const Mat& src1, const Mat& src2, Mat& dst);
